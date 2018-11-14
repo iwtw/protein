@@ -186,7 +186,7 @@ def main(config):
             net.requires_grad = True
 
         #adjust learning rate
-        if not config.train['use_cycle_lr']:
+        if not config.train['use_cos_lr']:
             mannual_learning_rate(optimizer,epoch,0,0,config)
             
 
@@ -201,7 +201,7 @@ def main(config):
             length = len(train_dataloader)
             for step , batch in tqdm(enumerate( data_loader) , total = length , file = sys.stdout , desc = 'training' , leave=False):
                 #adjust learning rate
-                if config.train['use_cycle_lr']:
+                if config.train['use_cos_lr']:
                     mannual_learning_rate(optimizer,epoch,step,length,config)
                 tb.add_scalar( 'lr' , optimizer.param_groups[0]['lr'] , epoch*len(train_dataloader) + step , 'train')
 

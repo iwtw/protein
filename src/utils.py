@@ -18,8 +18,8 @@ from tqdm import tqdm
 
 def mannual_learning_rate( optimizer , epoch ,  step , num_step_epoch , config ):
     
-    bounds = config.train['lr_bounds']
-    lrs = config.train['lrs']
+    bounds = config.train['lr_bounds'] if not config.train['use_cos_lr'] else config.train['cos_lr_bounds']
+    lrs = config.train['lrs'] if not config.train['use_cos_lr'] else config.train['cos_lrs']
     for idx in range(len(bounds) - 1):
         if bounds[idx] <= epoch and epoch < bounds[idx+1]:
             for param_group in optimizer.param_groups:
@@ -27,9 +27,9 @@ def mannual_learning_rate( optimizer , epoch ,  step , num_step_epoch , config )
                 param_group['weight_decay'] = config.loss['weight_l2_reg'] * param_group['decay_mult']
             break
 
-    if config.train['use_cycle_lr']:
+    if config.train['use_cos_lr']:
         for param_group in optimizer.param_groups:
-            length = bounds[idx+1] -  bounds[idx]
+            length = config.train['cos_bounds'][idx+1] -  config.train['cos_bounds'][idx]
             param_group['lr'] *= np.cos( np.pi / 2 / (length * num_step_epoch) * (step + num_step_epoch * ( epoch - bounds[idx] )) )
 
 

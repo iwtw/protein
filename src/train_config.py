@@ -28,11 +28,9 @@ train['freeze_feature_layer_epochs'] = 1
     
 
 #settings for cosine annealing
-train['use_cycle_lr'] = False
-train['cycle_len'] = 1
-train['num_cycles'] = 4
-#train['num_restart'] = 5
-train['cycle_mult'] = 1.6
+train['use_cos_lr'] = False
+train['cos_lr_bounds'] = [0,40,60,80,100]
+train['cos_lrs'] = [1e-1,1e-2,1e-3,1e-4]
 
 
 #config for save , log and resume
