@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from log import TensorBoardX,LogParser
+from log import *
 from utils import *
 from dataset import *
 from tqdm import tqdm
@@ -170,7 +170,7 @@ def main(config):
     #best_metric = {}
     #for k in val_dataloaders:
     #    best_metric[k] = 1e9
-    best_metric = 0
+    best_metric = 1e9
     log_parser = LogParser()
 
     for epoch in tqdm(range( last_epoch + 1  , config.train['num_epochs'] ) , file = sys.stdout , desc = 'epoch' , leave=False ):
@@ -294,31 +294,31 @@ def main(config):
                         log_dict[k] = np.concatenate(  [dic[k] for dic in val_loss_log_list ] , axis = 0  )
                 return log_dict
 
-        log_dicts['val'] =  validate(  val_dataloaders  ) 
+        log_dicts['val'] =  validate(  val_dataloader  ) 
 
         #save
         if best_metric > log_dicts['val'][config.train['save_metric']]:
             best_metric = log_dicts['val'][config.train['save_metric']]
-            torch.save( '{}/models/{}'.format(tb.path,'best.pth'),{ 
+            torch.save( { 
                 config.train['save_metric']:best_metric,
                 'epoch':epoch,
-                'model':model.state_dict(),
+                'model':net.state_dict(),
                 'optimizer':optimizer.state_dict()
-            })
-        torch.save( '{}/models/{}'.format(tb.path,'last.pth'),{
+            } , '{}/models/{}'.format(tb.path,'best.pth'))
+        torch.save( {
             config.train['save_metric']:log_dicts['val'][config.train['save_metric']],
             'epoch':epoch,
-            'model':model.state_dict(),
+            'model':net.state_dict(),
             'optimizer':optimizer.state_dict()
-        } )
+        }, '{}/models/{}'.format(tb.path,'last.pth') )
 
         #print to stdout
-        num_imgs = config.train['batch_size'] * len(train_dataloader) + config.train['val_batch_size'] *sum( [len(val_dataloaders[k]) for k in val_dataloaders ] )
+        num_imgs = config.train['batch_size'] * len(train_dataloader) + config.train['val_batch_size'] * len(val_dataloader) 
         log_msg = log_parser.parse_log_dict( log_dicts , epoch , optimizer.param_groups[0]['lr'] , num_imgs , config = config )
         tb.write_log(  log_msg  , use_tqdm = True )
 
         #log to tensorboard
-        log_net_params(tb,net)
+        log_net_params(tb,net,epoch,len(train_dataloader))
 
         for tag in log_dicts:
             if 'val' in tag:

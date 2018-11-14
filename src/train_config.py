@@ -27,7 +27,7 @@ train['lrs'] = [ 1e-1 , 1e-2 , 1e-3 , 1e-4 ]
 train['freeze_feature_layer_epochs'] = 1
     
 
-#settings for cosine annealing
+#settings for cosine annealing learning rate
 train['use_cos_lr'] = False
 train['cos_lr_bounds'] = [0,40,60,80,100]
 train['cos_lrs'] = [1e-1,1e-2,1e-3,1e-4]
@@ -80,6 +80,7 @@ def parse_config():
     net['name'] = net_name
     net['input_shape'] = (512,512)
     net['num_classes'] = 28
+    net['dilated'] = False
     
     '''
     if 'arc_resnet' in net['name']:
