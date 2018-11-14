@@ -18,24 +18,21 @@ from tqdm import tqdm
 
 def mannual_learning_rate( optimizer , epoch ,  step , num_step_epoch , config ):
     
-    if not config.train['use_cycle_lr']:
-        bounds = config.train['lr_bounds']
-        lrs = config.train['lrs']
-        for idx in range(len(bounds) - 1):
-            if bounds[idx] <= epoch and epoch < bounds[idx+1]:
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] = lrs[idx]
-    else:
-        bounds = config.train['cycle_bounds']
-        lrs = config.train['cycle_lrs']
-        for idx in range(len(bounds) - 1):
-            if bounds[idx] <= epoch and epoch < bounds[idx+1]:
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] = lrs[idx]
-                break
+    bounds = config.train['lr_bounds']
+    lrs = config.train['lrs']
+    for idx in range(len(bounds) - 1):
+        if bounds[idx] <= epoch and epoch < bounds[idx+1]:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lrs[idx] * param_group['lr_mult']
+                param_group['weight_decay'] = config.loss['weight_l2_reg'] * param_group['decay_mult']
+            break
+
+    if config.train['use_cycle_lr']:
         for param_group in optimizer.param_groups:
             length = bounds[idx+1] -  bounds[idx]
             param_group['lr'] *= np.cos( np.pi / 2 / (length * num_step_epoch) * (step + num_step_epoch * ( epoch - bounds[idx] )) )
+
+
 def find_best_lr(loss_fn,compute_total_loss_fn,backward_fn,net,optimizer,iter_dataloader,forward_fn,start_lr=1e-5,end_lr = 10 ,num_iters = 100):
 
     origin_net_state = net.state_dict()

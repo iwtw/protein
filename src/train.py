@@ -17,6 +17,7 @@ import sklearn
 from copy import deepcopy
 import torch.nn.functional  as F
 import models.gluoncv_resnet
+import models.utils
 from sklearn.model_selection import train_test_split
 
 
@@ -122,21 +123,22 @@ def main(config):
     net = nn.DataParallel( net )
     net.cuda()
     
-
-    parameters = net.parameters()
-
-
-
-
-
     tb = TensorBoardX(config = config , log_dir = config.train['log_dir'] , log_type = ['train' , 'val' , 'net'] )
     tb.write_net(str(net),silent=False)
+
+    optim_config = models.utils.get_optim_config(net)
+
+    for group in optim_config:
+        tb.write_log(('group: {} has {} params, lr_mult: {}, decay_mult: {}'.format( group['name'], len(group['params']), group['lr_mult'], group['decay_mult'])))
+
     assert config.train['optimizer'] in ['Adam' , 'SGD']
     if config.train['optimizer'] == 'Adam':
-        optimizer = torch.optim.Adam( parameters , lr = config.train['learning_rate']  ,  weight_decay = config.loss['weight_l2_reg']) 
+        optimizer = torch.optim.Adam( optim_config , lr = config.train['learning_rate']  ,  weight_decay = config.loss['weight_l2_reg']) 
     if config.train['optimizer'] == 'SGD':
-        optimizer = torch.optim.SGD( parameters , lr = config.train['learning_rate'] , weight_decay = config.loss['weight_l2_reg'] , momentum = config.train['momentum'] , nesterov = config.train['nesterov'] )
+        optimizer = torch.optim.SGD( optim_config , lr = config.train['learning_rate'] , weight_decay = config.loss['weight_l2_reg'] , momentum = config.train['momentum'] , nesterov = config.train['nesterov'] )
 
+    
+    #print( optimizer.param_groups )
 
     last_epoch = -1 
     if config.train['resume'] is not None:
@@ -172,20 +174,22 @@ def main(config):
     log_parser = LogParser()
 
     for epoch in tqdm(range( last_epoch + 1  , config.train['num_epochs'] ) , file = sys.stdout , desc = 'epoch' , leave=False ):
-        #set_learning_rate( optimizer , epoch )
 
-        if not config.train['mannual_learning_rate']:
-            for idx , v in enumerate(cycle_borders):
-                if epoch >= v:
-                    cycle_idx =  idx
-            if epoch == cycle_borders[cycle_idx] :
-                #temp_lr = optimizer.param_groups[0].get('lr')
-                #best_lr = find_temp_best_lr(epoch , start_lr = temp_lr if temp_lr is not None else 1e-5 ,num_iters = len(train_dataloader))
-                best_lr = find_temp_best_lr(epoch , start_lr = 1e-5 ,num_iters = len(train_dataloader))
-            cycle_len = int(config.train['cycle_mult'] ** cycle_idx)
-            epoch_in_cycle = (epoch - cycle_borders[cycle_idx]) % cycle_len
 
-           #tb.add_scalar( 'lr' , optimizer.param_groups[0]['lr'] , epoch*len(train_dataloader)  , 'train')
+        if epoch < config.train['freeze_feature_layer_epochs']:
+            net.requires_grad = False
+            try:
+                net.fc.requires_grad = True
+            except AttributeError as e:
+                net.module.fc.requires_grad = True
+        elif epoch == config.train['freeze_feature_layer_epochs']:
+            net.requires_grad = True
+
+        #adjust learning rate
+        if not config.train['use_cycle_lr']:
+            mannual_learning_rate(optimizer,epoch,0,0,config)
+            
+
         log_dicts = {}
 
         #train
@@ -196,20 +200,15 @@ def main(config):
             data_loader = train_dataloader
             length = len(train_dataloader)
             for step , batch in tqdm(enumerate( data_loader) , total = length , file = sys.stdout , desc = 'training' , leave=False):
-                if config.train['mannual_learning_rate']:
+                #adjust learning rate
+                if config.train['use_cycle_lr']:
                     mannual_learning_rate(optimizer,epoch,step,length,config)
-                assert len(optimizer.param_groups) == 1 
-                if not config.train['mannual_learning_rate']:
-                    for param_group in optimizer.param_groups:
-                        num_iters_a_cycle = len(train_dataloader) * cycle_len
-                        iter_in_cycle = epoch_in_cycle * len(train_dataloader) + step
-                        param_group['lr'] = best_lr * np.cos( np.pi / 2 / num_iters_a_cycle * iter_in_cycle )
                 tb.add_scalar( 'lr' , optimizer.param_groups[0]['lr'] , epoch*len(train_dataloader) + step , 'train')
-                if not 'gcn' in net_name:
-                    for k in batch:
-                        if not k in ['filename']:
-                            batch[k] = batch[k].cuda(async =  True) 
-                            batch[k].requires_grad = False
+
+                for k in batch:
+                    if not k in ['filename']:
+                        batch[k] = batch[k].cuda(async =  True) 
+                        batch[k].requires_grad = False
 
                 #results = net( batch['img'] , torch.Tensor( train_dataset.class_attributes[:train_num_classes] ).cuda(),  use_normalization = True )
                 #print( batch['img'].shape )

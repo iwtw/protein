@@ -10,11 +10,11 @@ train['random_seed'] = 42
 
 train['batch_size'] = 32 
 train['val_batch_size'] = 32
-train['log_step'] = 10
+train['log_step'] = 100
 train['save_epoch'] = 1
 train['save_metric'] = 'err'
 train['optimizer'] = 'SGD'
-train['learning_rate'] = 1e1
+train['learning_rate'] = 1e-1
 
 #-- for SGD -- #
 train['momentum'] = 0.9
@@ -24,6 +24,7 @@ train['mannual_learning_rate'] = True
 #settings for mannual tuning
 train['lr_bounds'] = [ 0 , 40 , 60 , 80 , 100 ]
 train['lrs'] = [ 1e-1 , 1e-2 , 1e-3 , 1e-4 ]
+train['freeze_feature_layer_epochs'] = 1
     
 
 #settings for cosine annealing
