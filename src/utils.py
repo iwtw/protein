@@ -29,7 +29,7 @@ def mannual_learning_rate( optimizer , epoch ,  step , num_step_epoch , config )
 
     if config.train['use_cos_lr']:
         for param_group in optimizer.param_groups:
-            length = config.train['cos_bounds'][idx+1] -  config.train['cos_bounds'][idx]
+            length = config.train['cos_lr_bounds'][idx+1] -  config.train['cos_lr_bounds'][idx]
             param_group['lr'] *= np.cos( np.pi / 2 / (length * num_step_epoch) * (step + num_step_epoch * ( epoch - bounds[idx] )) )
 
 
