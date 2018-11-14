@@ -230,8 +230,7 @@ def main(config):
                 train_loss_log_list.append( { k:loss_dict[k] for k in loss_dict} )
 
                 if step % config.train['log_step'] == 0 and epoch == last_epoch + 1 :
-                    tqdm.write('step {} : '.format(step))
-                    log_msg = ""
+                    log_msg = 'step {} : '.format(step)
                     for k in filter( lambda x:isinstance(loss_dict[x],float) and x not in ['err'], loss_dict):
                         log_msg += "{} : {} ".format(k,loss_dict[k] )
                     tqdm.write( log_msg  , file=sys.stdout )
