@@ -10,6 +10,7 @@ train['random_seed'] = 42
 
 train['batch_size'] = 32 
 train['val_batch_size'] = 32
+
 train['log_step'] = 100
 train['save_epoch'] = 1
 train['save_metric'] = 'err'
@@ -58,6 +59,8 @@ loss['s'] = 16
 loss['weight_l2_reg'] = 5e-4
 
 test = {}
+test['model'] = '../save/resnet34_512_shape512,SGD_seed42/20181114_161913/models/best.pth'
+test['batch_size'] = 64
 
 data = {}
 data['train_dir'] = '../data/train'
@@ -66,7 +69,8 @@ data['test_dir'] = '../data/test'
 
 def parse_config():
     train['num_epochs'] = train['lr_bounds'][-1]
-    data['csv_file'] = '../data/train.csv'
+    data['train_csv_file'] = '../data/train.csv'
+    data['test_csv_file'] = '../data/test.csv'
     #split_args = [train['split_random_seed']]
     #train['train_img_list'] = '../data/split_lists/{}_train_splitargs_{}_{}_{}.list'.format( train['dataset'] , *split_args )
     #train['val_img_list'] = {'zero':'../data/split_lists/{}_zero_val_splitargs_{}_{}_{}.list'.format( train['dataset'] ,*split_args )  , 'non_zero':'../data/split_lists/{}_nonzero_val_splitargs_{}_{}_{}.list'.format( train['dataset'] ,*split_args ), 'all':'../data/split_lists/{}_all_val_splitargs_{}_{}_{}.list'.format( train['dataset'] ,*split_args ) }

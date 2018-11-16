@@ -97,7 +97,7 @@ def compute_loss1( results , batch , epoch , config ,  class_range , is_training
 def main(config):
     init(config)
     
-    df = pd.read_csv( config.data['csv_file'] , index_col = 0  )
+    df = pd.read_csv( config.data['train_csv_file'] , index_col = 0  )
     train_df , val_df =  train_test_split( df , test_size = 0.1 , random_state = config.train['random_seed'] )
 
     train_dataset = ProteinDataset( config , train_df ,  is_training = True , data_dir = config.data['train_dir'] )
