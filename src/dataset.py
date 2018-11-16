@@ -68,7 +68,7 @@ class ProteinDataset(data.Dataset):
         for color in ['red','green','blue','yellow']:
             #print(self.data_dir + '/' + self.df.index[idx] +'_{}.png'.format( color )) 
             img = imread( self.data_dir + '/' + self.df.index[idx] +'_{}.png'.format( color ) , IMREAD_GRAYSCALE  )  
-            img = img.reshape(  img.shape[0] , img.shape[1] , 1  )
+            img = img.reshape( img.shape[0] , img.shape[1] , 1  )
             img = self.to_pil( img )
 
             if self.is_training:
@@ -79,7 +79,7 @@ class ProteinDataset(data.Dataset):
             img_channel_list.append( img )
 
         img = torch.cat( img_channel_list  , dim = 0  )
-        assert img.shape[0]==4 and img.shape[1]==512 and img.shape[2]==512
+        #assert img.shape[0]==4 and img.shape[1]==512 and img.shape[2]==512
         img = self.normalize( img )
                 
             #img = ( self.to_tensor( img ) - 0.5 ) *2.0
