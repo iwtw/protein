@@ -1,2 +1,5 @@
 data/
 save/
+*.h5
+submit/
+__pycache__/

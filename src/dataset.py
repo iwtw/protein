@@ -1,5 +1,5 @@
 import torch.utils.data as data
-from cv2 import imread , IMREAD_GRAYSCALE
+import cv2
 import torch
 
 
@@ -13,6 +13,7 @@ import pandas as pd
 class ProteinDataset(data.Dataset):
     def __init__(self , config , df  , is_training , data_dir = "" , has_label = True ):
         
+        self.config = config
         self.label_to_name_dict = {
             0:  'Nucleoplasm',
             1:  'Nuclear membrane',
@@ -57,7 +58,8 @@ class ProteinDataset(data.Dataset):
                                                                 torchvision.transforms.RandomRotation( 90 ) 
                                                                 ]
                                                             )
-        self.random_rotate = torchvision.transforms.RandomRotation( (-45,45))
+        #self.random_rotate = torchvision.transforms.RandomRotation( (-45,45))
+        self.random_rotate = torchvision.transforms.RandomRotation( 30 )
         self.color_jitter = torchvision.transforms.ColorJitter( 0.05 , 0.05 )
         self.to_pil = torchvision.transforms.ToPILImage()
 
@@ -67,18 +69,22 @@ class ProteinDataset(data.Dataset):
         img_channel_list = []
         for color in ['red','green','blue','yellow']:
             #print(self.data_dir + '/' + self.df.index[idx] +'_{}.png'.format( color )) 
-            img = imread( self.data_dir + '/' + self.df.index[idx] +'_{}.png'.format( color ) , IMREAD_GRAYSCALE  )  
+            img = cv2.imread( self.data_dir + '/' + self.df.index[idx] +'_{}.png'.format( color ) , cv2.IMREAD_GRAYSCALE  )
+            if not (self.config.net['input_shape'][0] == 512 and self.config.net['input_shape'][1] == 512):
+                img = cv2.resize( img , self.config.net['input_shape'] ,  cv2.INTER_AREA )
             img = img.reshape( img.shape[0] , img.shape[1] , 1  )
-            img = self.to_pil( img )
-
-            if self.is_training:
-                img = self.random_dihedral_tf(img)
-                img = self.random_rotate( img )
-                img = self.color_jitter( img )
-            img = self.to_tensor( img )
             img_channel_list.append( img )
 
-        img = torch.cat( img_channel_list  , dim = 0  )
+        img =  np.concatenate( img_channel_list , axis = 2 )
+                
+        img = self.to_pil( img )
+
+        if self.is_training:
+            img = self.random_dihedral_tf(img)
+            img = self.random_rotate( img )
+            img = self.color_jitter( img )
+        img = self.to_tensor( img )
+
         #assert img.shape[0]==4 and img.shape[1]==512 and img.shape[2]==512
         img = self.normalize( img )
                 

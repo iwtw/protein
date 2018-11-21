@@ -23,15 +23,16 @@ class LogParser:
             log_dicts[tag] = { k:log_dicts[tag][k] for k in filter( lambda x : isinstance(log_dicts[tag][x],float) , log_dicts[tag] ) } 
         t = time()
         log_msg = ""
-        if not config.train['use_cos_lr']:
+        if config.train['lr_curve'] == 'normal':
+        #if not config.train['use_cos_lr']:
             log_msg += "epoch {}  ,  lr {:.3e} {:.2f} imgs/s\n".format( epoch , lr ,  num_imgs / (t - self.t) )
 
-        else:
-            bounds = config.train['cos_lr_bounds']
+        elif config.train['lr_curve'] in ['cos','cyclical','one_cycle']:
+            bounds = config.train['lr_bounds']
             for idx in range(len(bounds) - 1):
                 if bounds[idx] <= epoch and epoch < bounds[idx+1]:
                     break
-            log_msg += "epoch {} , lr {:.3e} , cos_range [{},{}) {:.2f} imgs/s\n".format( epoch , config.train['cos_lrs'][idx] , bounds[idx] , bounds[idx+1] ,  num_imgs / (t - self.t) )
+            log_msg += "epoch {} , lr {:.3e} , lr_period [{},{}) {:.2f} imgs/s\n".format( epoch , config.train['lrs'][idx] , bounds[idx] , bounds[idx+1] ,  num_imgs / (t - self.t) )
         for tag in log_dicts:
             log_msg += "  {} : ".format(tag)
             log_dict = log_dicts[tag]

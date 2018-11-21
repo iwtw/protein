@@ -4,6 +4,7 @@ import torch
 import torch.utils.model_zoo as model_zoo
 import torch.nn as nn
 from gluoncvth.models.model_store import get_model_file
+from .layers import Flatten
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152']
@@ -123,7 +124,7 @@ class ResNet(nn.Module):
         - Yu, Fisher, and Vladlen Koltun. "Multi-scale context aggregation by dilated convolutions."
     """
     # pylint: disable=unused-variable
-    def __init__(self, block, layers, num_classes=1000, dilated=True,
+    def __init__(self, block, layers, num_classes=1000, dilated=True,dropout=0,
                  deep_base=False, norm_layer=nn.BatchNorm2d, input_shape = (224,224)):
         self.inplanes = 128 if deep_base else 64
         super(ResNet, self).__init__()
@@ -160,14 +161,27 @@ class ResNet(nn.Module):
         #self.avgpool = nn.AvgPool2d(7, stride=1)
         if dilated:
             self.avgpool = nn.AvgPool2d((input_shape[0]//8,input_shape[1]//8), stride=1)
+            self.maxpool2 = nn.MaxPool2d( (input_shape[0]//8 , input_shape[1]//8),stride=1 )
         else:
             self.avgpool = nn.AvgPool2d((input_shape[0]//32,input_shape[1]//32), stride=1)
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+            self.maxpool2 = nn.MaxPool2d( (input_shape[0]//32 , input_shape[1]//32),stride=1 )
+        self.classifier = nn.Sequential( 
+                Flatten(),
+                nn.BatchNorm1d(1024*block.expansion),
+                nn.Dropout( dropout ),
+                nn.Linear( 1024*block.expansion,512 ),
+                nn.ReLU(),
+                nn.BatchNorm1d( 512 ),
+                nn.Dropout( dropout ),
+                nn.Linear(512 , num_classes)
+                )
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_normal_( m.weight )
             elif isinstance(m, norm_layer):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -210,10 +224,14 @@ class ResNet(nn.Module):
         x = self.layer4(x)
 
         #print(x.shape)
-        x = self.avgpool(x)
+        avg = self.avgpool(x)
+        max_ = self.maxpool2(x)
+        x = torch.cat( [ avg , max_ ] , 1 )
+        x = self.classifier( x )
         #print(x.shape)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
+        #x = x.view(x.size(0), -1)
+        #x = self.dropout( x )
+        #x = self.fc(x)
 
         #return x
         return {'fc':x}
@@ -241,7 +259,7 @@ def resnet18(pretrained=True, root='~/.gluoncvth/models', **kwargs):
         except Exception as e:
             print(e)
             print( "try load with strict = True failed , load with strict = False" )
-        model.load_state_dict( d , strict = False )
+            model.load_state_dict( d , strict = False )
     return model
 
 
@@ -259,7 +277,7 @@ def resnet34(pretrained=True, root='~/.gluoncvth/models', **kwargs):
         except Exception as e:
             print(e)
             print( "try load with strict = True failed , load with strict = False" )
-        model.load_state_dict( d , strict = False )
+            model.load_state_dict( d , strict = False )
     return model
 
 
@@ -277,7 +295,7 @@ def resnet50(pretrained=True, root='~/.gluoncvth/models', **kwargs):
         except Exception as e:
             print(e)
             print( "try load with strict = True failed , load with strict = False" )
-        model.load_state_dict( d , strict = False )
+            model.load_state_dict( d , strict = False )
     return model
 
 

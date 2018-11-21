@@ -8,30 +8,50 @@ train = {}
 train['random_seed'] = 42
 
 
-train['batch_size'] = 32 
-train['val_batch_size'] = 32
+train['batch_size'] = 64 
+train['val_batch_size'] = 64
 
 train['log_step'] = 100
 train['save_epoch'] = 1
 train['save_metric'] = 'err'
-train['optimizer'] = 'SGD'
+train['optimizer'] = 'Adam'
 train['learning_rate'] = 1e-1
+
+#-- for Adam -- #
+train['amsgrad'] = False
+train['betas'] = [0.9,0.999]
 
 #-- for SGD -- #
 train['momentum'] = 0.9
 train['nesterov'] = True 
 
+train['clip_grad_norm'] = 1.0
 train['mannual_learning_rate'] = True
 #settings for mannual tuning
-train['lr_bounds'] = [ 0 , 40 , 60 , 80 , 100 ]
-train['lrs'] = [ 1e-1 , 1e-2 , 1e-3 , 1e-4 ]
-train['freeze_feature_layer_epochs'] = 1
+#train['lr_bounds'] = [ 0 , 40 , 60 , 80 , 100 ]
+train['lr_for_parts'] = [1/10,1/3,1]
+#train['lrs'] = [ 1e-1 , 1e-2 , 1e-3 , 1e-4 ]
     
 
 #settings for cosine annealing learning rate
-train['use_cos_lr'] = False
-train['cos_lr_bounds'] = [0,40,60,80,100]
-train['cos_lrs'] = [1e-1,1e-2,1e-3,1e-4]
+train['lr_curve'] = 'cyclical'
+assert train['lr_curve'] in ['cosine','cyclical','one_cycle','normal'] 
+#cyclical
+
+#train['lr_bounds'] = [0,40,60,80,100]
+#train['lrs'] = [1e-1,1e-2,1e-3,1e-4]
+train['freeze_feature_layer_epochs'] = 2
+train['freeze_lr_curve'] = 'one_cycle'
+assert train['freeze_lr_curve'] in ['cosine','cyclical','one_cycle','normal'] 
+ilr = 2e-2
+train['lrs'] = [ ilr , ilr , ilr/4 , ilr/4 ,  ilr/4 , ilr/4 ,ilr/4 ,ilr/4 , ilr/16 ]
+#train['lr_bounds'] = [0,5,7,9,11,13,17,21,29]
+train['lr_bounds'] = [0,1,2 , 4,6,8,10,14,18,26]
+train['cyclical_lr_inc_ratio'] = 0.3
+train['cyclical_lr_init_factor'] =  1/20
+train['cyclical_mom_min'] = 0.85
+train['cyclical_mom_max'] = 0.95
+train['restart_optimizer'] = []
 
 
 #config for save , log and resume
@@ -46,7 +66,7 @@ train['resume_optimizer'] = False
 global net
 net = {}
 net['name'] = 'resnet34'
-net['input_shape'] = (512,512)
+net['input_shape'] = (256,256)
 
 
 
@@ -56,10 +76,11 @@ loss['arcloss_start_epoch'] = 10
 loss['m'] = 0.2
 loss['s'] = 16
 
-loss['weight_l2_reg'] = 5e-4
+#loss['weight_l2_reg'] = 5e-4
+loss['weight_l2_reg'] = 0
 
 test = {}
-test['model'] = '../save/resnet34_512_shape512,SGD_seed42/20181114_161913/models/best.pth'
+test['model'] = '../save/resnet18_shape512,512_seed42_Adam/20181120_164206/models/last.pth'
 test['batch_size'] = 64
 
 data = {}
@@ -80,11 +101,11 @@ def parse_config():
     net_name = net['name']
     print('parsing----')
     print(net_name)
-    net = {}
     net['name'] = net_name
-    net['input_shape'] = (512,512)
+    #net['input_shape'] = (512,512)
     net['num_classes'] = 28
     net['dilated'] = False
+    net['dropout'] = 0.5
     
     '''
     if 'arc_resnet' in net['name']:
@@ -107,7 +128,7 @@ def parse_config():
     '''
             
 
-    train['sub_dir'] = '{}_{}_shape{},{}_seed{}'.format( net['name'] , net['input_shape'][0],net['input_shape'][1] , train['optimizer'] , train['random_seed'] )
+    train['sub_dir'] = '{}_shape{},{}_seed{}_{}'.format( net['name'] , net['input_shape'][0],net['input_shape'][1]  , train['random_seed'], train['optimizer'] )
 
     time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     train['log_dir'] = '../save/{}/{}'.format( train['sub_dir'] , time )

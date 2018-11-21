@@ -55,7 +55,7 @@ if __name__ == '__main__' :
     net_kwargs = deepcopy( config.net )
     net_name = net_kwargs.pop('name')
 
-    net = models.gluoncv_resnet.resnet34(pretrained=True , **net_kwargs)
+    net = eval("models.gluoncv_resnet.{}".format(net_name))(pretrained=True , **net_kwargs)
     net = nn.DataParallel( net )
     net.cuda()
     
@@ -72,6 +72,7 @@ if __name__ == '__main__' :
     net.eval()
     val_pred = []
     val_label = []
+    acc_list = []
     with torch.no_grad():
         for step , batch in tqdm(enumerate( val_dataloader ) , total = len(val_dataloader) ):
             for k in batch:
@@ -82,8 +83,11 @@ if __name__ == '__main__' :
             results = net( batch['img'] ) 
             val_pred.append( F.sigmoid( results['fc']).detach().cpu().numpy() ) 
             val_label.append( batch['label'].numpy() )
-            tqdm.write( str(( ( results['fc'].cpu() > 0.0 ) == batch['label'].byte() ).float().mean() ) )
+            acc = ( ( results['fc'].cpu() > 0.0 ) == batch['label'].byte() ).float().mean()
+            acc_list.append( acc.numpy() )
+            #tqdm.write( str( acc ) )
 
+    tqdm.write( "val acc : " + str(np.mean( acc_list )) )
     val_pred = np.concatenate( val_pred , axis = 0 ) 
     val_label = np.concatenate( val_label , axis = 0 )
     th = fit_val(val_pred,val_label,config.net['num_classes'])

@@ -15,22 +15,77 @@ import matplotlib.pyplot as plt
 import math
 from tqdm import tqdm
 
+from copy import deepcopy
 
 def mannual_learning_rate( optimizer , epoch ,  step , num_step_epoch , config ):
     
-    bounds = config.train['lr_bounds'] if not config.train['use_cos_lr'] else config.train['cos_lr_bounds']
-    lrs = config.train['lrs'] if not config.train['use_cos_lr'] else config.train['cos_lrs']
+    bounds = config.train['lr_bounds'] 
+    lrs = config.train['lrs'] 
     for idx in range(len(bounds) - 1):
         if bounds[idx] <= epoch and epoch < bounds[idx+1]:
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lrs[idx] * param_group['lr_mult']
-                param_group['weight_decay'] = config.loss['weight_l2_reg'] * param_group['decay_mult']
+                param_group['true_weight_decay'] = config.loss['weight_l2_reg'] * param_group['decay_mult']
+                if 'betas' in param_group:
+                    param_group['betas'] = deepcopy( config.train['betas'] )
+                    #print(config.train['betas'] )
+                if 'momentum' in param_group:
+                    param_group['momentum'] = config.train['momentum']
             break
 
-    if config.train['use_cos_lr']:
+    if config.train['lr_curve'] == 'normal':
+        pass
+    elif config.train['lr_curve'] == 'cosine':
         for param_group in optimizer.param_groups:
-            length = config.train['cos_lr_bounds'][idx+1] -  config.train['cos_lr_bounds'][idx]
+            length = config.train['lr_bounds'][idx+1] -  config.train['lr_bounds'][idx]
             param_group['lr'] *= np.cos( np.pi / 2 / (length * num_step_epoch) * (step + num_step_epoch * ( epoch - bounds[idx] )) )
+
+    elif config.train['lr_curve'] == 'cyclical':
+        length = (config.train['lr_bounds'][idx+1] -  config.train['lr_bounds'][idx]) * num_step_epoch
+        x = (epoch - bounds[idx] )*num_step_epoch + step
+        factor = config.train['cyclical_lr_init_factor']
+        mid_x = length * config.train['cyclical_lr_inc_ratio']
+        mom_min = config.train['cyclical_mom_min']
+        mom_max = config.train['cyclical_mom_max']
+        if x <= mid_x:
+            y1 = x / mid_x * ( 1 - factor ) + factor
+            k2 = ( mom_min - mom_max ) / mid_x 
+            b2 = mom_max
+            y2 = k2*x + b2
+        else:
+            k1 = ( 1 - factor )/ ( mid_x - length )
+            b1 = (mid_x * factor - length ) / (mid_x - length)
+            y1 = k1*x + b1  
+            k2 = ( mom_min - mom_max ) / ( mid_x - length )
+            b2 = ( mid_x - length * mom_min ) / ( mid_x - length )
+            y2 = k2 * x + b2
+        for param_group in optimizer.param_groups:
+            param_group['lr'] *= y1
+            if 'betas' in param_group:
+                param_group['betas'][0] = y2
+            if 'momentum' in param_group:
+                param_group['momentum'] = y2
+    elif config.train['lr_curve'] == 'one_cycle':
+        length = (config.train['lr_bounds'][idx+1] -  config.train['lr_bounds'][idx]) * num_step_epoch
+        x = (epoch - bounds[idx] )*num_step_epoch + step
+        factor = config.train['cyclical_lr_init_factor']
+        mid_x = length * config.train['cyclical_lr_inc_ratio']
+        mom_min = config.train['cyclical_mom_min']
+        mom_max = config.train['cyclical_mom_max']
+        if x <= mid_x:
+            y1 = x / mid_x * ( 1 - factor ) + factor
+            k2 = ( mom_min - mom_max ) / mid_x 
+            b2 = mom_max
+            y2 = k2*x + b2
+        else:
+            y1 = ( np.cos( np.pi * (x - mid_x) / ( length - mid_x ) ) + 1 ) / 2 * ( 1 ) + 0 #from lr_max to 0 
+            y2 = ( np.cos( np.pi + np.pi * ( x - mid_x ) / ( length - mid_x ) ) + 1  ) / 2 * ( mom_max - mom_min )   + mom_min
+        for param_group in optimizer.param_groups:
+            param_group['lr'] *= y1
+            if 'betas' in param_group:
+                param_group['betas'][0] = y2
+            if 'momentum' in param_group:
+                param_group['momentum'] = y2
 
 
 def find_best_lr(loss_fn,compute_total_loss_fn,backward_fn,net,optimizer,iter_dataloader,forward_fn,start_lr=1e-5,end_lr = 10 ,num_iters = 100):

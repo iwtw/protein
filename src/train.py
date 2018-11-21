@@ -34,8 +34,7 @@ def compute_loss( results , batch , epoch , config , is_training ):
     loss_dict = {}
     #print(batch['label'])
     loss_dict['focal'] = focal_loss( results['fc'] , batch['label'] )
-    loss_dict['acc'] = ( ( results['fc'] > 0.0 ) == batch['label'].byte() ).float().mean()
-    loss_dict['err'] = 1 - loss_dict['acc']
+    loss_dict['err'] = 1 - ( ( results['fc'] > 0.0 ) == batch['label'].byte() ).float().mean()
     loss_dict['total'] = loss_dict['focal']
     return loss_dict
 
@@ -101,10 +100,10 @@ def main(config):
     train_df , val_df =  train_test_split( df , test_size = 0.1 , random_state = config.train['random_seed'] )
 
     train_dataset = ProteinDataset( config , train_df ,  is_training = True , data_dir = config.data['train_dir'] )
-    train_dataloader = torch.utils.data.DataLoader(  train_dataset , batch_size = config.train['batch_size']  , shuffle = True , drop_last = True , num_workers = 5 , pin_memory = True) 
+    train_dataloader = torch.utils.data.DataLoader(  train_dataset , batch_size = config.train['batch_size']  , shuffle = True , drop_last = True , num_workers = 12 , pin_memory = False) 
     
-    val_dataset = ProteinDataset( config , val_df ,  is_training = True , data_dir = config.data['train_dir'] )
-    val_dataloader = torch.utils.data.DataLoader(  val_dataset , batch_size = config.train['val_batch_size']  , shuffle = True , drop_last = True , num_workers = 5 , pin_memory = True) 
+    val_dataset = ProteinDataset( config , val_df ,  is_training = False , data_dir = config.data['train_dir'] )
+    val_dataloader = torch.utils.data.DataLoader(  val_dataset , batch_size = config.train['val_batch_size']  , shuffle = True , drop_last = True , num_workers = 8 , pin_memory = False) 
 
     '''
     for k in val_dataset_name:
@@ -119,23 +118,26 @@ def main(config):
     #net = eval(net_name)( **net_kwargs )
     #config.net['name'] = net_name
     #net = gluoncvth.models.get_deeplab_resnet34_ade(pretrained=True)
-    net = models.gluoncv_resnet.resnet34(pretrained=True , **net_kwargs)
+    net = eval('models.gluoncv_resnet.{}'.format(net_name))(pretrained=True , **net_kwargs)
+    #net = eval('models.torchvision_resnet.{}'.format( net_name))( pretrained=True , **net_kwargs )
+    #net = eval('models.torchvision_resnet.{}'.format(net_name))( pretrained=True , **net_kwargs )
     net = nn.DataParallel( net )
     net.cuda()
     
     tb = TensorBoardX(config = config , log_dir = config.train['log_dir'] , log_type = ['train' , 'val' , 'net'] )
     tb.write_net(str(net),silent=False)
 
-    optim_config = models.utils.get_optim_config(net)
+    optim_config = models.utils.get_optim_config(net,config.train['lr_for_parts'])
 
     for group in optim_config:
         tb.write_log(('group: {} has {} params, lr_mult: {}, decay_mult: {}'.format( group['name'], len(group['params']), group['lr_mult'], group['decay_mult'])))
 
     assert config.train['optimizer'] in ['Adam' , 'SGD']
     if config.train['optimizer'] == 'Adam':
-        optimizer = torch.optim.Adam( optim_config , lr = config.train['learning_rate']  ,  weight_decay = config.loss['weight_l2_reg']) 
+        optimizer_fn = partial( torch.optim.Adam  ,  optim_config , lr = config.train['learning_rate']  , betas = config.train['betas'] ,  weight_decay = 0 , amsgrad = config.train['amsgrad']  )
     if config.train['optimizer'] == 'SGD':
-        optimizer = torch.optim.SGD( optim_config , lr = config.train['learning_rate'] , weight_decay = config.loss['weight_l2_reg'] , momentum = config.train['momentum'] , nesterov = config.train['nesterov'] )
+        optimizer_fn = partial( torch.optim.SGD , optim_config , lr = config.train['learning_rate'] , weight_decay = 0 , momentum = config.train['momentum'] , nesterov = config.train['nesterov'] )
+    optimizer = optimizer_fn()
 
     
     #print( optimizer.param_groups )
@@ -152,9 +154,7 @@ def main(config):
 
 
     
-    global cross_entropy,mse,focal_loss
-    cross_entropy = nn.CrossEntropyLoss().cuda()
-    mse = nn.MSELoss().cuda()
+    global focal_loss
     focal_loss = FocalLoss().cuda()
 
     
@@ -173,22 +173,26 @@ def main(config):
     best_metric = 1e9
     log_parser = LogParser()
 
+    origin_curve = config.train['lr_curve']
     for epoch in tqdm(range( last_epoch + 1  , config.train['num_epochs'] ) , file = sys.stdout , desc = 'epoch' , leave=False ):
 
 
-        if epoch < config.train['freeze_feature_layer_epochs']:
-            net.requires_grad = False
-            try:
-                net.fc.requires_grad = True
-            except AttributeError as e:
-                net.module.fc.requires_grad = True
-        elif epoch == config.train['freeze_feature_layer_epochs']:
-            net.requires_grad = True
 
         #adjust learning rate
-        if not config.train['use_cos_lr']:
-            mannual_learning_rate(optimizer,epoch,0,0,config)
+        if epoch < config.train['freeze_feature_layer_epochs'] :
+            config.train['lr_curve'] = config.train['freeze_lr_curve']
+        elif epoch == config.train['freeze_feature_layer_epochs']:
+            config.train['lr_curve'] = origin_curve 
             
+
+        if epoch < config.train['freeze_feature_layer_epochs']:
+            set_requires_grad( net , False )
+            set_requires_grad( net.module.classifier , True )
+        else:
+            set_requires_grad( net , True )
+            
+        if epoch in config.train['restart_optimizer'] :
+            optimizer =  optimizer_fn()
 
         log_dicts = {}
 
@@ -201,14 +205,18 @@ def main(config):
             length = len(train_dataloader)
             for step , batch in tqdm(enumerate( data_loader) , total = length , file = sys.stdout , desc = 'training' , leave=False):
                 #adjust learning rate
-                if config.train['use_cos_lr']:
-                    mannual_learning_rate(optimizer,epoch,step,length,config)
-                tb.add_scalar( 'lr' , optimizer.param_groups[0]['lr'] , epoch*len(train_dataloader) + step , 'train')
+                mannual_learning_rate(optimizer,epoch,step,length,config)
+
+                tb.add_scalar( 'lr' , optimizer.param_groups[-1]['lr'] , epoch*len(train_dataloader) + step , 'train')
+                if 'momentum' in optimizer.param_groups[-1]:
+                    tb.add_scalar( 'momentum' , optimizer.param_groups[-1]['momentum'] , epoch*len(train_dataloader) + step , 'train')
+                if 'betas' in optimizer.param_groups[-1]:
+                    tb.add_scalar( 'beta1' , optimizer.param_groups[-1]['betas'][0] , epoch*len(train_dataloader) + step , 'train')
 
                 for k in batch:
                     if not k in ['filename']:
                         batch[k] = batch[k].cuda(async =  True) 
-                        batch[k].requires_grad = False
+                        #batch[k].requires_grad = False
 
                 #results = net( batch['img'] , torch.Tensor( train_dataset.class_attributes[:train_num_classes] ).cuda(),  use_normalization = True )
                 #print( batch['img'].shape )
@@ -218,6 +226,13 @@ def main(config):
                 #backward( loss_dict , net , optimizer , config )
                 optimizer.zero_grad()
                 loss_dict['total'].backward()
+                #print(next(net.named_parameters()))
+                #nn.utils.clip_grad_norm_( map( lambda x : x[1] , filter(lambda x: 'classifier' not in x[0] , net.named_parameters()) ) , config.train['clip_grad_norm'])
+                #nn.utils.clip_grad_norm_( filter( lambda m:m.requires_grad , net.parameters() ) , config.train['clip_grad_norm'])
+                nn.utils.clip_grad_norm_( net.parameters()  , config.train['clip_grad_norm'])
+                for group in optimizer.param_groups:
+                    for param in group['params']:
+                        param.data.mul_( 1 - group['true_weight_decay'] *  group['lr'])
                 optimizer.step()
                 loss_dict.pop('total')
 
@@ -230,7 +245,7 @@ def main(config):
                 train_loss_log_list.append( { k:loss_dict[k] for k in loss_dict} )
 
                 if step % config.train['log_step'] == 0 and epoch == last_epoch + 1 :
-                    log_msg = 'step {} : '.format(step)
+                    log_msg = 'step {} lr {} : '.format(step,optimizer.param_groups[0]['lr'])
                     for k in filter( lambda x:isinstance(loss_dict[x],float) and x not in ['err'], loss_dict):
                         log_msg += "{} : {} ".format(k,loss_dict[k] )
                     tqdm.write( log_msg  , file=sys.stdout )
@@ -314,7 +329,7 @@ def main(config):
 
         #print to stdout
         num_imgs = config.train['batch_size'] * len(train_dataloader) + config.train['val_batch_size'] * len(val_dataloader) 
-        log_msg = log_parser.parse_log_dict( log_dicts , epoch , optimizer.param_groups[0]['lr'] , num_imgs , config = config )
+        log_msg = log_parser.parse_log_dict( log_dicts , epoch , optimizer.param_groups[-1]['lr'] , num_imgs , config = config )
         tb.write_log(  log_msg  , use_tqdm = True )
 
         #log to tensorboard
