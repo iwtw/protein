@@ -159,12 +159,8 @@ class ResNet(nn.Module):
             self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                            norm_layer=norm_layer)
         #self.avgpool = nn.AvgPool2d(7, stride=1)
-        if dilated:
-            self.avgpool = nn.AvgPool2d((input_shape[0]//8,input_shape[1]//8), stride=1)
-            self.maxpool2 = nn.MaxPool2d( (input_shape[0]//8 , input_shape[1]//8),stride=1 )
-        else:
-            self.avgpool = nn.AvgPool2d((input_shape[0]//32,input_shape[1]//32), stride=1)
-            self.maxpool2 = nn.MaxPool2d( (input_shape[0]//32 , input_shape[1]//32),stride=1 )
+        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.maxpool2 = nn.AdaptiveMaxPool2d((1,1))
         self.classifier = nn.Sequential( 
                 Flatten(),
                 nn.BatchNorm1d(1024*block.expansion),
@@ -238,7 +234,10 @@ class ResNet(nn.Module):
 
 def warp_dict_fn(d):
     conv1_weight = d['conv1.weight']
-    conv1_weight = torch.cat( [conv1_weight , conv1_weight.mean( dim = 1 ).reshape( 64,1,7,7 )] , dim = 1 )
+    #conv1_weight = torch.cat( [conv1_weight , conv1_weight[:,:2].mean( dim = 1 ).reshape( 64,1,7,7 )] , dim = 1 )
+    a = torch.zeros( 64 , 1, 7 , 7 )
+    torch.nn.init.kaiming_normal_( a )
+    conv1_weight = torch.cat( [conv1_weight , a] , dim = 1 )
     d['conv1.weight'] = conv1_weight
     d.pop('fc.weight')
     d.pop('fc.bias')

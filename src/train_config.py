@@ -5,7 +5,7 @@ import datetime
 
 train = {}
 
-train['random_seed'] = 42
+train['random_seed'] = 0
 
 
 train['batch_size'] = 64 
@@ -34,7 +34,7 @@ train['lr_for_parts'] = [1/10,1/3,1]
     
 
 #settings for cosine annealing learning rate
-train['lr_curve'] = 'cyclical'
+train['lr_curve'] = 'one_cycle'
 assert train['lr_curve'] in ['cosine','cyclical','one_cycle','normal'] 
 #cyclical
 
@@ -72,16 +72,18 @@ net['input_shape'] = (256,256)
 
 loss = {}
 #arc loss
+loss['name'] = 'Loss_v1'
 loss['arcloss_start_epoch'] = 10
 loss['m'] = 0.2
 loss['s'] = 16
 
 #loss['weight_l2_reg'] = 5e-4
-loss['weight_l2_reg'] = 0
+loss['weight_l2_reg'] = 5e-6
 
 test = {}
-test['model'] = '../save/resnet18_shape512,512_seed42_Adam/20181120_164206/models/last.pth'
-test['batch_size'] = 64
+test['model'] = '../save/resnet34_shape256,256_seed0_Adam/20181125_225542/models/last.pth'
+test['batch_size'] = 16
+test['tta'] = 16
 
 data = {}
 data['train_dir'] = '../data/train'
