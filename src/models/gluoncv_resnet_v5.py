@@ -5,9 +5,21 @@ import torch.utils.model_zoo as model_zoo
 import torch.nn as nn
 from gluoncvth.models.model_store import get_model_file
 from .layers import Flatten
+import torch.nn.functional as F
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152']
+
+class ArcLinear(nn.Module):
+    def __init__( self , in_features , out_features  ):
+        super(type(self),self).__init__()
+        self.linear = nn.Linear( in_features , out_features , bias = False)
+        nn.init.xavier_normal_( self.linear.weight )
+    def forward( self , x ):
+        #if use_normalization:
+        return F.linear( F.normalize( x ) , F.normalize( self.linear.weight ) )
+        #else:
+        #    return F.linear( x , self.linear.weight  )
 
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
@@ -170,7 +182,8 @@ class ResNet(nn.Module):
                 nn.ReLU(),
                 nn.BatchNorm1d( 512 ),
                 nn.Dropout( dropout ),
-                nn.Linear(512 , num_classes)
+                #nn.Linear(512 , num_classes)
+                ArcLinear(512 , num_classes)
                 )
         
 

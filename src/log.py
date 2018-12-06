@@ -13,6 +13,7 @@ from types import ModuleType
 import datetime
 from tqdm import tqdm
 from time import time
+from sklearn.metrics import f1_score
 
 class LogParser:
     def __init__(self):
@@ -20,7 +21,11 @@ class LogParser:
 
     def parse_log_dict( self,  log_dicts , epoch , lr , num_imgs , config):
         for tag in log_dicts:
-            log_dicts[tag] = { k:log_dicts[tag][k] for k in filter( lambda x : isinstance(log_dicts[tag][x],float) , log_dicts[tag] ) } 
+            d = { k:log_dicts[tag][k] for k in filter( lambda x : isinstance(log_dicts[tag][x],float) , log_dicts[tag] ) } 
+            if 'f1_score_label' in log_dicts[tag]:
+                d['macro_f1_score'] = f1_score( log_dicts[tag]['f1_score_label'] , log_dicts[tag]['f1_score_pred']  , average = 'macro' )
+            log_dicts[tag] = d
+
         t = time()
         log_msg = ""
         if config.train['lr_curve'] == 'normal':

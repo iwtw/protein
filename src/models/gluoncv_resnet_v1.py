@@ -147,7 +147,6 @@ class ResNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0], norm_layer=norm_layer)
-        self.layer1_fc = nn.Sequential(  nn.AdaptiveMaxPool2d( (1,1)) , Flatten() ,  nn.Linear( 64 , 1 )) 
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2, norm_layer=norm_layer)
         if dilated:
             self.layer3 = self._make_layer(block, 256, layers[2], stride=1,
@@ -160,19 +159,18 @@ class ResNet(nn.Module):
             self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                            norm_layer=norm_layer)
         #self.avgpool = nn.AvgPool2d(7, stride=1)
-        #self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.maxpool2 = nn.AdaptiveMaxPool2d((1,1))
         self.classifier = nn.Sequential( 
                 Flatten(),
-                nn.BatchNorm1d(512*block.expansion),
+                nn.BatchNorm1d(1024*block.expansion),
                 nn.Dropout( dropout ),
-                nn.Linear( 512*block.expansion,512 ),
+                nn.Linear( 1024*block.expansion,512 ),
                 nn.ReLU(),
                 nn.BatchNorm1d( 512 ),
                 nn.Dropout( dropout ),
                 nn.Linear(512 , num_classes)
                 )
-        
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -214,19 +212,17 @@ class ResNet(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        maxpool = self.maxpool(x)
+        x = self.maxpool(x)
 
-        layer1 = self.layer1(maxpool)
-        layer1_fc = self.layer1_fc( layer1 )
+        x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
 
         #print(x.shape)
-        #avg = self.avgpool(x)
+        avg = self.avgpool(x)
         max_ = self.maxpool2(x)
-        #x = torch.cat( [ avg , max_ ] , 1 )
-        x = max_
+        x = torch.cat( [ avg , max_ ] , 1 )
         x = self.classifier( x )
         #print(x.shape)
         #x = x.view(x.size(0), -1)
@@ -234,7 +230,7 @@ class ResNet(nn.Module):
         #x = self.fc(x)
 
         #return x
-        return {'fc':x , 'layer1_fc':layer1_fc}
+        return {'fc':x}
 
 def warp_dict_fn(d):
     conv1_weight = d['conv1.weight']

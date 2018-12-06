@@ -14,6 +14,7 @@ from copy import deepcopy
 import scipy.optimize as opt
 import torch.nn.functional as F
 from sklearn.metrics import f1_score
+import torch.nn as nn
 
 th_magic = np.array([0.565,0.39,0.55,0.345,0.33,0.39,0.33,0.45,0.38,0.39,
                0.34,0.42,0.31,0.38,0.49,0.50,0.38,0.43,0.46,0.40,
@@ -94,7 +95,7 @@ if __name__ == '__main__' :
     net_kwargs = deepcopy( config.net )
     net_name = net_kwargs.pop('name')
 
-    net = eval("models.gluoncv_resnet.{}".format(net_name))(pretrained=False , **net_kwargs)
+    net = eval("models.{}".format(net_name))(**net_kwargs)
     net = nn.DataParallel( net )
     net.cuda()
     
@@ -127,13 +128,14 @@ if __name__ == '__main__' :
             batch_fc = batch_fc.mean( dim = - 1 )
             val_pred.append( F.sigmoid( batch_fc ).detach().cpu().numpy() ) 
             val_label.append( batch['label'].numpy() )
-            acc = ( ( batch_fc > 0.0 ) == batch['label'].byte() ).float().mean()
+            acc = ( ( batch_fc > 0.0 ) == (batch['label'] > 0.5 ) ).float().mean()
             acc_list.append( acc.numpy() )
             #tqdm.write( str( acc ) )
 
     tqdm.write( "val acc : " + str(np.mean( acc_list )) )
     val_pred = np.concatenate( val_pred , axis = 0 ) 
-    val_label = np.concatenate( val_label , axis = 0 )
+    val_label = np.concatenate( val_label , axis = 0 ) > 0.5
+    
     th = fit_val(val_pred,val_label,config.net['num_classes'])
     th[th<0.1] = 0.1
     print('Thresholds: ',th)

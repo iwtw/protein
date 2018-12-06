@@ -147,7 +147,6 @@ class ResNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0], norm_layer=norm_layer)
-        self.layer1_fc = nn.Sequential(  nn.AdaptiveMaxPool2d( (1,1)) , Flatten() ,  nn.Linear( 64 , 1 )) 
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2, norm_layer=norm_layer)
         if dilated:
             self.layer3 = self._make_layer(block, 256, layers[2], stride=1,
@@ -172,7 +171,6 @@ class ResNet(nn.Module):
                 nn.Dropout( dropout ),
                 nn.Linear(512 , num_classes)
                 )
-        
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -214,10 +212,9 @@ class ResNet(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        maxpool = self.maxpool(x)
+        x = self.maxpool(x)
 
-        layer1 = self.layer1(maxpool)
-        layer1_fc = self.layer1_fc( layer1 )
+        x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
@@ -234,7 +231,7 @@ class ResNet(nn.Module):
         #x = self.fc(x)
 
         #return x
-        return {'fc':x , 'layer1_fc':layer1_fc}
+        return {'fc':x}
 
 def warp_dict_fn(d):
     conv1_weight = d['conv1.weight']

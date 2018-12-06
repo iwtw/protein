@@ -6,7 +6,6 @@ import torch
 import numpy as np
 import torchvision
 import torchvision.transforms
-from custom_utils import *
 from sklearn.decomposition import PCA
 import pandas as pd
 from copy import deepcopy
@@ -111,6 +110,9 @@ class ProteinDataset(data.Dataset):
         if self.has_label:
             ret_dict['label'] = np.zeros(len(self.label_to_name_dict),np.float32)
             ret_dict['label'][ np.array( self.df['Target'][idx].split(' ') , np.uint8 ) ] = 1
+            k = self.config.net['num_classes']
+            eps = self.config.data['smooth_label_epsilon']
+            ret_dict['label'] = (1 - eps) * ret_dict['label'] +  eps * ( 1 - ret_dict['label'] )  / k
         ret_dict['filename'] = self.df.index[idx]
         return ret_dict
 

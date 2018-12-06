@@ -18,13 +18,13 @@ import torch.nn.functional  as F
 import models.gluoncv_resnet
 import models.utils
 from sklearn.model_selection import train_test_split
-from loss import Loss
+from loss import *
 
 
 def main(config):
 
     df = pd.read_csv( config.data['train_csv_file'] , index_col = 0  )
-    train_df , val_df =  train_test_split( df , test_size = 0.1 , random_state = config.train['random_seed'] )
+    train_df , val_df =  train_test_split( df , test_size = 0.2 ,random_state = config.train['random_seed'] )
 
     train_dataset = ProteinDataset( config , train_df ,  is_training = True , data_dir = config.data['train_dir'] )
     train_dataloader = torch.utils.data.DataLoader(  train_dataset , batch_size = config.train['batch_size']  , shuffle = True , drop_last = True , num_workers = 12 , pin_memory = False) 
@@ -45,14 +45,14 @@ def main(config):
     #net = eval(net_name)( **net_kwargs )
     #config.net['name'] = net_name
     #net = gluoncvth.models.get_deeplab_resnet34_ade(pretrained=True)
-    net = eval('models.gluoncv_resnet.{}'.format(net_name))(pretrained=True , **net_kwargs)
+    net = eval('models.{}'.format(net_name))( **net_kwargs)
     #net = eval('models.torchvision_resnet.{}'.format( net_name))( pretrained=True , **net_kwargs )
     #net = eval('models.torchvision_resnet.{}'.format(net_name))( pretrained=True , **net_kwargs )
     net = nn.DataParallel( net )
     net.cuda()
     
     tb = TensorBoardX(config = config , log_dir = config.train['log_dir'] , log_type = ['train' , 'val' , 'net'] )
-    tb.write_net(str(net),silent=False)
+    tb.write_net(str(net),silent=True)
 
     optim_config = models.utils.get_optim_config(net,config.train['lr_for_parts'])
 
@@ -65,6 +65,7 @@ def main(config):
     if config.train['optimizer'] == 'SGD':
         optimizer_fn = partial( torch.optim.SGD , optim_config , lr = config.train['learning_rate'] , weight_decay = 0 , momentum = config.train['momentum'] , nesterov = config.train['nesterov'] )
     optimizer = optimizer_fn()
+
 
     
     #print( optimizer.param_groups )
@@ -88,13 +89,17 @@ def main(config):
     #net_params = net.module.parameters()
     t = time()
 
-    compute_loss = eval( config.loss['name'] )().cuda()
+    compute_loss = eval( config.loss['name'] )(config = config).cuda()
 
+    lr_find( partial( compute_loss , epoch = 0 ) , net , optimizer , train_dataloader , forward_fn = lambda batch : net( batch['img'] ) , plot_name = "{}/lr_find_epoch_0.png".format(tb.path) )
    
     #best_metric = {}
     #for k in val_dataloaders:
     #    best_metric[k] = 1e9
-    best_metric = 1e9
+    if config.train['save_max']:
+        best_metric = -1e9
+    else:
+        best_metric = 1e9
     log_parser = LogParser()
 
     origin_curve = config.train['lr_curve']
@@ -106,6 +111,7 @@ def main(config):
         if epoch < config.train['freeze_feature_layer_epochs'] :
             config.train['lr_curve'] = config.train['freeze_lr_curve']
         elif epoch == config.train['freeze_feature_layer_epochs']:
+            #lr_find( partial( compute_loss , epoch = 0 ) , net , optimizer , train_dataloader , forward_fn = lambda batch : net( batch['img'] ) , plot_name = '../data/tmp/epoch_{}_begin.png'.format(epoch) )
             config.train['lr_curve'] = origin_curve 
             
 
@@ -122,9 +128,10 @@ def main(config):
 
         #train
         def train():
+            net.train()
+            compute_loss.train()
             log_t = time()
             train_loss_log_list = [] 
-            net.train()
             data_loader = train_dataloader
             length = len(train_dataloader)
             for step , batch in tqdm(enumerate( data_loader) , total = length , file = sys.stdout , desc = 'training' , leave=False):
@@ -146,7 +153,7 @@ def main(config):
                 #print( batch['img'].shape )
                 results = net( batch['img'] )
 
-                loss_dict = compute_loss( results , batch  , epoch , config ,  is_training= True )
+                loss_dict = compute_loss( results , batch  , epoch )
                 #backward( loss_dict , net , optimizer , config )
                 optimizer.zero_grad()
                 loss_dict['total'].backward()
@@ -194,6 +201,7 @@ def main(config):
                     log_dict[k] = float( np.mean( [dic[k] for dic in train_loss_log_list ]  ) )
                 else:
                     log_dict[k] = np.concatenate(  [dic[k] for dic in train_loss_log_list ] , axis = 0  )
+                    #log_dict[k] = [dic[k] for dic in train_loss_log_list ]
             #log_dict = { k: float( np.mean( [ dic[k] for dic in train_loss_log_list ] )) for k in train_loss_log_list[0] }
             return log_dict
 
@@ -201,6 +209,7 @@ def main(config):
 
         #validate
         net.eval()
+        compute_loss.eval()
         def validate( val_dataloader):
 
             val_loss_log_list= [ ]
@@ -214,7 +223,7 @@ def main(config):
 
                     results = net( batch['img'] )
 
-                    loss_dict = compute_loss( results , batch , epoch , config , is_training = False )
+                    loss_dict = compute_loss( results , batch , epoch )
                     loss_dict.pop('total')
 
 
@@ -230,14 +239,23 @@ def main(config):
                     if isinstance(val_loss_log_list[0][k] , float ) :
                         log_dict[k] = float( np.mean( [dic[k] for dic in val_loss_log_list ]  ) )
                     else:
+                        #log_dict[k] = [dic[k] for dic in val_loss_log_list ] 
                         log_dict[k] = np.concatenate(  [dic[k] for dic in val_loss_log_list ] , axis = 0  )
                 return log_dict
 
         log_dicts['val'] =  validate(  val_dataloader  ) 
 
+        #print to stdout
+        num_imgs = config.train['batch_size'] * len(train_dataloader) + config.train['val_batch_size'] * len(val_dataloader) 
+        log_msg = log_parser.parse_log_dict( log_dicts , epoch , optimizer.param_groups[-1]['lr'] , num_imgs , config = config )
+        tb.write_log(  log_msg  , use_tqdm = True )
+
         #save
-        if best_metric > log_dicts['val'][config.train['save_metric']]:
-            best_metric = log_dicts['val'][config.train['save_metric']]
+        cmp_fn = max if config.train['save_max'] else min
+        #if best_metric > log_dicts['val'][config.train['save_metric']]:
+        new_metric = log_dicts['val'][config.train['save_metric']]
+        if cmp_fn( best_metric , new_metric ) == new_metric :
+            best_metric = new_metric
             torch.save( { 
                 config.train['save_metric']:best_metric,
                 'epoch':epoch,
@@ -251,10 +269,6 @@ def main(config):
             'optimizer':optimizer.state_dict()
         }, '{}/models/{}'.format(tb.path,'last.pth') )
 
-        #print to stdout
-        num_imgs = config.train['batch_size'] * len(train_dataloader) + config.train['val_batch_size'] * len(val_dataloader) 
-        log_msg = log_parser.parse_log_dict( log_dicts , epoch , optimizer.param_groups[-1]['lr'] , num_imgs , config = config )
-        tb.write_log(  log_msg  , use_tqdm = True )
 
         #log to tensorboard
         log_net_params(tb,net,epoch,len(train_dataloader))

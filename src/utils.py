@@ -88,52 +88,51 @@ def mannual_learning_rate( optimizer , epoch ,  step , num_step_epoch , config )
                 param_group['momentum'] = y2
 
 
-def find_best_lr(loss_fn,compute_total_loss_fn,backward_fn,net,optimizer,iter_dataloader,forward_fn,start_lr=1e-5,end_lr = 10 ,num_iters = 100):
+def lr_find(loss_fn,net,optimizer,dataloader,forward_fn,start_lr=1e-5,end_lr = 10 , num_iter = None ,  plot_name = None ):
 
-    origin_net_state = net.state_dict()
-    origin_optimizer_state = optimizer.state_dict()
+    origin_net_state = deepcopy( net.state_dict() )
+    origin_optimizer_state = deepcopy( optimizer.state_dict() )
     best_loss = 1e9
     loss_list = []
 
+    if num_iter is None:
+        num_iter = len(dataloader)
     ratio = end_lr / start_lr 
-    lr_mult = ratio ** (1/num_iters)
+    lr_mult = ratio ** (1/num_iter)
     
-    lr_list = [0]
-    for it in tqdm(range(num_iters) , desc ='finding lr' ):
+    lr_list = []
+    dataloader_iter = iter(dataloader)
+    tqdm_it = tqdm( range(num_iter) , desc ='finding lr' , total = num_iter )
+    for it  in tqdm_it:
         lr = start_lr * lr_mult ** it
         for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
+            param_group['lr'] = lr * param_group['lr_mult']
         temp_loss_list = []
-        '''
-        for it in range(3):
-            loss_dict = loss_fn( forward_fn(x,**forward_fn_kwargs) , x ) 
-            backward_fn( loss_dict , optimizer )
-            with torch.no_grad():
-                loss_dict = loss_fn( forward_fn(x,**forward_fn_kwargs) , x ) 
-            loss = compute_total_loss_fn( loss_dict ).detach().cpu().numpy()
-            temp_loss_list.append( loss )
-        '''
-        x = next(iter_dataloader)
+        x = next(dataloader_iter)
         for k in x:
-            x[k] = x[k].cuda()
-            x[k].requires_grad = False
+            if isinstance( x[k] , torch.Tensor ):
+                x[k] = x[k].cuda()
+                x[k].requires_grad = False
         loss_dict = loss_fn( forward_fn( x ) , x ) 
-        loss = compute_total_loss_fn( loss_dict ).detach().cpu().numpy()
         #stop criterion
-        if math.isnan( loss ) or loss > 4 * best_loss :
+        loss = loss_dict['total']
+        if math.isnan( loss ) or ( it > 10 and loss > 2*loss_list[0] ) :
+            #tqdm_it.close()
             break
 
-        backward_fn( loss_dict , optimizer )
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+
+
         lr_list.append( lr )
+        loss = loss.detach().cpu().numpy()
         loss_list.append( loss )
 
         #update best_loss
         if it > 10 and loss < best_loss:
-            assert num_iters >= 20
             best_loss = loss
-
-
-    loss_list.append( compute_total_loss_fn( loss_fn( forward_fn(x) , x ) ).detach().cpu().numpy() )
 
 
         
@@ -158,29 +157,15 @@ def find_best_lr(loss_fn,compute_total_loss_fn,backward_fn,net,optimizer,iter_da
 
 
     plt.figure()
-    f , axes = plt.subplots(1,3)
-    axes[0].set_title('smoothed loss curve')
-    axes[0].set_xlabel('learning rate')
-    axes[0].set_ylabel('loss')
-    axes[0].plot(  lr_list,sm_loss_list)
-    axes[0].set_xscale('log')
-    axes[1].set_title('d_loss curve')
-    axes[1].set_xlabel('learning rate')
-    axes[1].set_ylabel('d_loss')
-    axes[1].plot( lr_list,d_sm_loss_list)
-    axes[1].set_xscale('log')
-    axes[2].set_title('dd_loss curve')
-    axes[2].set_xlabel('learning rate')
-    axes[2].set_ylabel('ddloss')
-    axes[2].plot( lr_list,dd_sm_loss_list)
-    axes[2].set_xscale('log')
+    f , axes = plt.subplots(1,1)
+    axes.set_title('smoothed loss curve')
+    axes.set_xlabel('learning rate')
+    axes.set_ylabel('loss')
+    axes.plot(  lr_list,sm_loss_list)
+    axes.set_xscale('log')
 
-    steepest_idx = np.argmin( d_sm_loss_list )
-    lowest_idx = np.argmin( sm_loss_list )
-    final_lr = lr_list[int(np.floor( steepest_idx + (lowest_idx - steepest_idx) * 3/4   ))  ] 
-    tqdm.write('steepest_lr {} lowest_lr {} final_lr {}'.format(lr_list[steepest_idx] , lr_list[lowest_idx] , final_lr))
-    return final_lr
-
+    if plot_name is not None:
+        plt.savefig( plot_name )
 
 
             

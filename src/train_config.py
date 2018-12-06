@@ -8,12 +8,13 @@ train = {}
 train['random_seed'] = 0
 
 
-train['batch_size'] = 64 
-train['val_batch_size'] = 64
+train['batch_size'] = 32 
+train['val_batch_size'] = 32
 
 train['log_step'] = 100
 train['save_epoch'] = 1
-train['save_metric'] = 'err'
+train['save_metric'] = 'macro_f1_score'
+train['save_max'] = True
 train['optimizer'] = 'Adam'
 train['learning_rate'] = 1e-1
 
@@ -65,14 +66,15 @@ train['resume_optimizer'] = False
 
 global net
 net = {}
-net['name'] = 'resnet34'
-net['input_shape'] = (256,256)
+net['name'] = 'gluoncv_resnet_v6.resnet34'
+net['input_shape'] = (512,512)
+net['pretrained'] = False
 
 
 
 loss = {}
 #arc loss
-loss['name'] = 'Loss_v1'
+loss['name'] = 'Loss_v4'
 loss['arcloss_start_epoch'] = 10
 loss['m'] = 0.2
 loss['s'] = 16
@@ -81,13 +83,14 @@ loss['s'] = 16
 loss['weight_l2_reg'] = 5e-6
 
 test = {}
-test['model'] = '../save/resnet34_shape256,256_seed0_Adam/20181125_225542/models/last.pth'
+test['model'] = '../save/gluoncv_resnet_v6.resnet34_shape256,256_seed0_Adam/20181205_153013/models/last.pth'
 test['batch_size'] = 16
 test['tta'] = 16
 
 data = {}
 data['train_dir'] = '../data/train'
 data['test_dir'] = '../data/test'
+data['smooth_label_epsilon'] = 0.0
 
 
 def parse_config():
@@ -108,6 +111,9 @@ def parse_config():
     net['num_classes'] = 28
     net['dilated'] = False
     net['dropout'] = 0.5
+    if 'v6' in net_name or 'v7' in net_name:
+        net['se_kwargs'] = {}
+        net['se_kwargs']['pool_fn'] = partial( nn.AdaptiveAvgPool2d , output_size = (1,1) )
     
     '''
     if 'arc_resnet' in net['name']:
