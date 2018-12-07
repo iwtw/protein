@@ -3,7 +3,7 @@ import torch.nn.functional as F
 
 class FocalLoss(nn.Module):
     def __init__(self, gamma=2):
-        super().__init__()
+        super(type(self),self).__init__()
         self.gamma = gamma
         
     def forward(self, input, target):
@@ -20,7 +20,7 @@ class FocalLoss(nn.Module):
 
 class DiceLoss(nn.Module):
     def __init__(self,smooth=1.):
-        super().__init__()
+        super(type(self),self).__init__()
         self.smooth = smooth
     def forward(self,predicts,labels):
         predicts = predicts.view( predicts.shape[0] , -1 )
@@ -29,3 +29,20 @@ class DiceLoss(nn.Module):
         score = ( 2 * intersection + self.smooth ) / ( predicts.sum() + labels.sum() + self.smooth )
         return score
 
+class F1Loss(nn.Module):
+    def __init__( self ):
+        super(type(self),self).__init__()
+
+    def forward(self, y_true, y_pred , eps = 1e-8 ):
+        #y_true = ( y_true > 0.5 ).float()
+        tp = (y_true*y_pred).sum(0)
+        #tn = ((1-y_true)*(1-y_pred).sum(0)
+        fp = ((1-y_true)*y_pred).sum(0)
+        fn = (y_true*(1-y_pred)).sum(0)
+
+        p = tp / (tp + fp ) #+ eps )
+        r = tp / (tp + fn ) #+ eps )
+
+        f1 = 2*p*r / (p+r ) #+ eps ))
+        f1 = torch.where(torch.isnan(f1), torch.zeros_like(f1), f1)
+        return 1 - f1.mean()

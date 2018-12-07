@@ -27,10 +27,10 @@ def main(config):
     train_df , val_df =  train_test_split( df , test_size = 0.2 ,random_state = config.train['random_seed'] )
 
     train_dataset = ProteinDataset( config , train_df ,  is_training = True , data_dir = config.data['train_dir'] )
-    train_dataloader = torch.utils.data.DataLoader(  train_dataset , batch_size = config.train['batch_size']  , shuffle = True , drop_last = True , num_workers = 12 , pin_memory = False) 
+    train_dataloader = torch.utils.data.DataLoader(  train_dataset , batch_size = config.train['batch_size']  , shuffle = True , drop_last = True , num_workers = 8 , pin_memory = False) 
     
     val_dataset = ProteinDataset( config , val_df ,  is_training = False , data_dir = config.data['train_dir'] )
-    val_dataloader = torch.utils.data.DataLoader(  val_dataset , batch_size = config.train['val_batch_size']  , shuffle = True , drop_last = True , num_workers = 8 , pin_memory = False) 
+    val_dataloader = torch.utils.data.DataLoader(  val_dataset , batch_size = config.train['val_batch_size']  , shuffle = True , drop_last = True , num_workers = 4 , pin_memory = False) 
 
     '''
     for k in val_dataset_name:
@@ -89,9 +89,10 @@ def main(config):
     #net_params = net.module.parameters()
     t = time()
 
-    compute_loss = eval( config.loss['name'] )(config = config).cuda()
+    compute_loss = eval( config.loss['name'] )(config = config)#.cuda()
 
     lr_find( partial( compute_loss , epoch = 0 ) , net , optimizer , train_dataloader , forward_fn = lambda batch : net( batch['img'] ) , plot_name = "{}/lr_find_epoch_0.png".format(tb.path) )
+    torch.cuda.empty_cache()
    
     #best_metric = {}
     #for k in val_dataloaders:

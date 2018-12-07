@@ -11,6 +11,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
 import scipy.optimize as opt
 
+import torchvision
+
 import pandas as pd
 import numpy as np
 import os
@@ -63,9 +65,10 @@ tr_n, val_n = train_test_split(train_names, test_size=0.1, random_state=42)
 def open_rgby(path,id): #a function that reads RGBY image
     colors = ['red','green','blue','yellow']
     flags = cv2.IMREAD_GRAYSCALE
-    img = [cv2.imread(os.path.join(path, id+'_'+color+'.png'), flags).astype(np.float32)/255
-           for color in colors]
-    return np.stack(img, axis=-1)
+    #img = [cv2.imread(os.path.join(path, id+'_'+color+'.png'), flags).astype(np.float32)/255
+    #       for color in colors]
+    img = [cv2.imread(os.path.join(path, id+'_'+color+'.png'), flags) for color in colors]
+    #return np.stack(img, axis=-1)
 
 
 class pdFilesDataset(FilesDataset):
@@ -73,12 +76,17 @@ class pdFilesDataset(FilesDataset):
         self.labels = pd.read_csv(LABELS).set_index('Id')
         self.labels['Target'] = [[int(i) for i in s.split()] for s in self.labels['Target']]
         #super().__init__(fnames, transform, path)
+        self.to_tensor = torchvision.transforms.ToTensor()
         super().__init__(self.labels.index.values, transform, path)
     
     def get_x(self, i):
         img = open_rgby(self.path,self.fnames[i])
-        if self.sz == 512: return img 
-        else: return cv2.resize(img, (self.sz, self.sz),cv2.INTER_AREA)
+        if self.sz == 512: 
+            pass
+        else:
+            img = cv2.resize(img, (self.sz, self.sz),cv2.INTER_AREA)
+        img = self.to_tensor( img )
+        return x
     
     def get_y(self, i):
         if(self.path == TEST): return np.zeros(len(name_label_dict),dtype=np.int)

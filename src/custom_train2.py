@@ -20,9 +20,9 @@ if __name__ == "__main__":
     config.train['lr_for_parts'] = [1,1,1]
     config.train['lr_curve'] = 'one_cycle'
     config.loss['name'] = 'Loss_v1'
-    for config.net['name'] in [ 'gluoncv_resnet_v2.resnet34' ]:
+    for config.net['name'] in [ 'gluoncv_resnet_v8.resnet34' ]:
         for config.train['lrs'] in [  [1e-2 ] , [2e-2] ]:
-            for config.train['lr_bounds'] in [  [0,100]  ] :
+            for config.train['lr_bounds'] in [  [0,80] , [0,100]  ] :
                 config.parse_config()
                 #for config.net['se_kwargs']['pool_fn'] in [ partial( nn.AdaptiveAvgPool2d , output_size = (1,1) )  ]:
                 print('================================================================================================================================================================================================================================')

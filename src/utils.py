@@ -118,6 +118,9 @@ def lr_find(loss_fn,net,optimizer,dataloader,forward_fn,start_lr=1e-5,end_lr = 1
         loss = loss_dict['total']
         if math.isnan( loss ) or ( it > 10 and loss > 2*loss_list[0] ) :
             #tqdm_it.close()
+            del loss
+            del loss_dict
+            del x
             break
 
         optimizer.zero_grad()
