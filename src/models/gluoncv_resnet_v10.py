@@ -186,13 +186,13 @@ class ResNet(nn.Module):
             self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                            norm_layer=norm_layer)
         #self.avgpool = nn.AvgPool2d(7, stride=1)
-        #self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.maxpool2 = nn.AdaptiveMaxPool2d((1,1))
         self.classifier = nn.Sequential( 
                 Flatten(),
-                nn.BatchNorm1d(512*block.expansion),
+                nn.BatchNorm1d(1024*block.expansion),
                 nn.Dropout( dropout ),
-                nn.Linear( 512*block.expansion,512 ),
+                nn.Linear( 1024*block.expansion,512 ),
                 nn.ReLU(),
                 nn.BatchNorm1d( 512 ),
                 nn.Dropout( dropout ),
@@ -246,18 +246,10 @@ class ResNet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
-        #print(x.shape)
-        #avg = self.avgpool(x)
+        avg = self.avgpool(x)
         max_ = self.maxpool2(x)
-        #x = torch.cat( [ avg , max_ ] , 1 )
-        x = max_
+        x = torch.cat( [ avg , max_ ] , 1 )
         x = self.classifier( x )
-        #print(x.shape)
-        #x = x.view(x.size(0), -1)
-        #x = self.dropout( x )
-        #x = self.fc(x)
-
-        #return x
         return {'fc':x}
 
 

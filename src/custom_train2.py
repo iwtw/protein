@@ -15,14 +15,17 @@ if __name__ == "__main__":
     #for  config.loss['weight_l2_reg'] in [0,1e-4,1e-2]:
     #    for config.train['restart_optimizer'] in [ [2,10,18] , [] ] : for config.train['restart_optimizer'] in [ [2,10,18] , [] ] :
     #        config.parse_config()
+    config.train['save_metric'] = {'macro_f1_score':True , 'bce':False , 'acc':True }#True : saves the max , False : saves the min
     config.net['pretrained'] = False
     config.train['freeze_feature_layer_epochs'] = 0
     config.train['lr_for_parts'] = [1,1,1]
     config.train['lr_curve'] = 'one_cycle'
-    config.loss['name'] = 'Loss_v1'
-    for config.net['name'] in [ 'gluoncv_resnet_v8.resnet34' ]:
-        for config.train['lrs'] in [  [1e-2 ] , [2e-2] ]:
-            for config.train['lr_bounds'] in [  [0,80] , [0,100]  ] :
+    config.train['lr_find'] = True
+    config.loss['name'] = 'Loss_v7'
+    config.loss['stage_epoch'] = [0,75]
+    for config.net['name'] in [ 'gluoncv_resnet_v11.resnet34' ]:
+        for config.train['lrs'] in [  [1e-2 , 5e-3 , 1e-3] ]:
+            for config.train['lr_bounds'] in [  [0,75,100]   ] :
                 config.parse_config()
                 #for config.net['se_kwargs']['pool_fn'] in [ partial( nn.AdaptiveAvgPool2d , output_size = (1,1) )  ]:
                 print('================================================================================================================================================================================================================================')

@@ -5,8 +5,6 @@ import torch.utils.model_zoo as model_zoo
 import torch.nn as nn
 from gluoncvth.models.model_store import get_model_file
 from .layers import Flatten
-from . import layers as L
-from functools import partial
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152']
@@ -17,26 +15,12 @@ def conv3x3(in_planes, out_planes, stride=1):
                      padding=1, bias=False)
 
 
-class SE(nn.Module):
-    def __init__( self , num_channels , pool_fn = partial( nn.AdaptiveAvgPool2d , output_size = (1,1)) , reduction_ratio = 16 ):
-        super(type(self),self).__init__()
-        self.pool = pool_fn()
-        self.flatten = L.Flatten()
-        self.fc1 = L.linear( num_channels , num_channels // reduction_ratio , activation_fn = nn.ReLU , use_batchnorm = False )
-        self.fc2 = L.linear( num_channels // reduction_ratio , num_channels , activation_fn = nn.Sigmoid , use_batchnorm = False )
-    def forward( self , x ):
-        w = self.pool( x ) 
-        w = self.flatten( w )
-        w = self.fc1( w )
-        w = self.fc2( w )
-        w = w.view( w.shape[0] , w.shape[1] , 1 , 1  )
-        return x * w
-
 class BasicBlock(nn.Module):
     """ResNet BasicBlock
     """
     expansion = 1
-    def __init__(self, inplanes, planes, stride=1, dilation=1, downsample=None, previous_dilation=1, norm_layer=None , se_kwargs = None):
+    def __init__(self, inplanes, planes, stride=1, dilation=1, downsample=None, previous_dilation=1,
+                 norm_layer=None):
         super(BasicBlock, self).__init__()
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride,
                                padding=dilation, dilation=dilation, bias=False)
@@ -45,13 +29,8 @@ class BasicBlock(nn.Module):
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1,
                                padding=previous_dilation, dilation=previous_dilation, bias=False)
         self.bn2 = norm_layer(planes)
-        if se_kwargs is not None:
-            self.se = SE( planes , **se_kwargs  )
-        else:
-            self.se = SE( planes )
         self.downsample = downsample
         self.stride = stride
-
 
     def forward(self, x):
         residual = x
@@ -62,8 +41,6 @@ class BasicBlock(nn.Module):
 
         out = self.conv2(out)
         out = self.bn2(out)
-
-        out = self.se( out )
 
         if self.downsample is not None:
             residual = self.downsample(x)
@@ -79,7 +56,8 @@ class Bottleneck(nn.Module):
     """
     # pylint: disable=unused-argument
     expansion = 4
-    def __init__(self, inplanes, planes, stride=1, dilation=1, downsample=None, previous_dilation=1, norm_layer=None , se_kwargs = None):
+    def __init__(self, inplanes, planes, stride=1, dilation=1,
+                 downsample=None, previous_dilation=1, norm_layer=None):
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = norm_layer(planes)
@@ -90,10 +68,6 @@ class Bottleneck(nn.Module):
         self.conv3 = nn.Conv2d(
             planes, planes * 4, kernel_size=1, bias=False)
         self.bn3 = norm_layer(planes * 4)
-        if se_kwargs is not None:
-            self.se = SE( planes * 4 , **se_kwargs )
-        else:
-            self.se = SE( planes * 4 )
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.dilation = dilation
@@ -119,7 +93,6 @@ class Bottleneck(nn.Module):
 
         out = self.conv3(out)
         out = self.bn3(out)
-        out = self.se( out )
 
         if self.downsample is not None:
             residual = self.downsample(x)
@@ -186,13 +159,13 @@ class ResNet(nn.Module):
             self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                            norm_layer=norm_layer)
         #self.avgpool = nn.AvgPool2d(7, stride=1)
-        #self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.maxpool2 = nn.AdaptiveMaxPool2d((1,1))
         self.classifier = nn.Sequential( 
                 Flatten(),
-                nn.BatchNorm1d(512*block.expansion),
+                nn.BatchNorm1d(1024*block.expansion),
                 nn.Dropout( dropout ),
-                nn.Linear( 512*block.expansion,512 ),
+                nn.Linear( 1024*block.expansion,512 ),
                 nn.ReLU(),
                 nn.BatchNorm1d( 512 ),
                 nn.Dropout( dropout ),
@@ -246,27 +219,18 @@ class ResNet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
-        #print(x.shape)
-        #avg = self.avgpool(x)
+        avg = self.avgpool(x)
         max_ = self.maxpool2(x)
-        #x = torch.cat( [ avg , max_ ] , 1 )
-        x = max_
+        x = torch.cat( [ avg , max_ ] , 1 )
         x = self.classifier( x )
-        #print(x.shape)
-        #x = x.view(x.size(0), -1)
-        #x = self.dropout( x )
-        #x = self.fc(x)
-
-        #return x
         return {'fc':x}
-
 
 def warp_dict_fn(d):
     conv1_weight = d['conv1.weight']
-    conv1_weight = torch.cat( [conv1_weight , conv1_weight[:,:2].mean( dim = 1 ).reshape( 64,1,7,7 )] , dim = 1 )
-    #a = torch.zeros( 64 , 1, 7 , 7 )
-    #torch.nn.init.kaiming_normal_( a )
-    #conv1_weight = torch.cat( [conv1_weight , a] , dim = 1 )
+    #conv1_weight = torch.cat( [conv1_weight , conv1_weight[:,:2].mean( dim = 1 ).reshape( 64,1,7,7 )] , dim = 1 )
+    a = torch.zeros( 64 , 1, 7 , 7 )
+    torch.nn.init.kaiming_normal_( a )
+    conv1_weight = torch.cat( [conv1_weight , a] , dim = 1 )
     d['conv1.weight'] = conv1_weight
     d.pop('fc.weight')
     d.pop('fc.bias')
@@ -278,10 +242,7 @@ def resnet18(pretrained=True, root='~/.gluoncvth/models', **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    se_kwargs = kwargs.pop( 'se_kwargs' )
-    block = partial( BasicBlock , se_kwargs = se_kwargs )
-    block.expansion = BasicBlock.expansion
-    model = ResNet(block, [2, 2, 2, 2], **kwargs)
+    model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
     if pretrained:
         d = torch.load( get_model_file('resnet18', root=root))
         d = warp_dict_fn( d )
@@ -299,10 +260,7 @@ def resnet34(pretrained=True, root='~/.gluoncvth/models', **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    se_kwargs = kwargs.pop( 'se_kwargs' )
-    block = partial( BasicBlock , se_kwargs = se_kwargs )
-    block.expansion = BasicBlock.expansion
-    model = ResNet(block, [3, 4, 6, 3], **kwargs)
+    model = ResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
     if pretrained:
         d = torch.load( get_model_file('resnet34', root=root))
         d = warp_dict_fn( d )
@@ -320,10 +278,7 @@ def resnet50(pretrained=True, root='~/.gluoncvth/models', **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    se_kwargs = kwargs.pop( 'se_kwargs' )
-    block = partial( Bottleneck , se_kwargs = se_kwargs )
-    block.expansion = Bottleneck.expansion
-    model = ResNet(block, [3, 4, 6, 3], **kwargs)
+    model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
     if pretrained:
         d = torch.load( get_model_file('resnet50', root=root))
         d = warp_dict_fn( d )
@@ -341,9 +296,6 @@ def resnet101(pretrained=True, root='~/.gluoncvth/models', **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    se_kwargs = kwargs.pop( 'se_kwargs' )
-    block = partial( Bottleneck , se_kwargs = se_kwargs )
-    block.expansion = Bottleneck.expansion
     model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
     if pretrained:
         d = torch.load( get_model_file('resnet101', root=root))
@@ -362,12 +314,9 @@ def resnet152(pretrained=True, root='~/.gluoncvth/models', **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    se_kwargs = kwargs.pop( 'se_kwargs' )
-    block = partial( Bottleneck , se_kwargs = se_kwargs )
-    block.expansion = Bottleneck.expansion
     model = ResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
     if pretrained:
-        d = torch.load( get_model_file('resnet152', root=root))
+        d = torch.load( get_model_file('resnet101', root=root))
         d = warp_dict_fn( d )
         try:
             model.load_state_dict( d , strict = True )

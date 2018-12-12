@@ -19,21 +19,21 @@ if __name__ == "__main__":
     config.train['freeze_feature_layer_epochs'] = 0
     config.train['lr_for_parts'] = [1,1,1]
     config.train['lr_curve'] = 'one_cycle'
-    config.loss['name'] = 'Loss_v1'
+    config.loss['name'] = 'Loss_v5'
     config.data['smooth_label_epsilon'] = 0.1
-    for config.net['name'] in [ 'gluoncv_resnet_v6.resnet34' , 'gluoncv_resnet_v6.resnet50']:
-        for config.train['lrs'] in [  [1e-2 , 1e-2] ]:
-            for config.train['lr_bounds'] in [ [0,50] , [0,75] , [0,100]  ] :
+    config.loss['stage_epoch'] = [0,5]
+    for config.net['name'] in [ 'gluoncv_resnet_v9.resnet34' ]:
+        for config.train['lrs'] in [  [2e-2 , 1e-2 ] ]:
+            for config.train['lr_bounds'] in [ [0,5,75]  ]:
                 config.parse_config()
-                for config.net['se_kwargs']['pool_fn'] in [ partial( nn.AdaptiveAvgPool2d , output_size = (1,1) )  ]:
-                    print('================================================================================================================================================================================================================================')
-                    sleep(5)
-                    try:
-                        result = main(config)
-                        if best_zero < result['macro_f1_score']:
-                            best_zero = result['macro_f1_score']
-                            best_result = result
-                    except KeyboardInterrupt:
-                        pass
+                print('================================================================================================================================================================================================================================')
+                sleep(5)
+                try:
+                    result = main(config)
+                    if best_zero < result['macro_f1_score']:
+                        best_zero = result['macro_f1_score']
+                        best_result = result
+                except KeyboardInterrupt:
+                    pass
     print('best result :')
     print( best_result )

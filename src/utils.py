@@ -16,6 +16,7 @@ import math
 from tqdm import tqdm
 
 from copy import deepcopy
+import sys
 
 def mannual_learning_rate( optimizer , epoch ,  step , num_step_epoch , config ):
     
@@ -101,14 +102,12 @@ def lr_find(loss_fn,net,optimizer,dataloader,forward_fn,start_lr=1e-5,end_lr = 1
     lr_mult = ratio ** (1/num_iter)
     
     lr_list = []
-    dataloader_iter = iter(dataloader)
-    tqdm_it = tqdm( range(num_iter) , desc ='finding lr' , total = num_iter )
-    for it  in tqdm_it:
+    tqdm_it = tqdm( dataloader  , desc ='finding lr' , total = num_iter , file=sys.stdout , leave=False )
+    for it , x  in enumerate(tqdm_it):
         lr = start_lr * lr_mult ** it
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr * param_group['lr_mult']
         temp_loss_list = []
-        x = next(dataloader_iter)
         for k in x:
             if isinstance( x[k] , torch.Tensor ):
                 x[k] = x[k].cuda()
@@ -116,11 +115,11 @@ def lr_find(loss_fn,net,optimizer,dataloader,forward_fn,start_lr=1e-5,end_lr = 1
         loss_dict = loss_fn( forward_fn( x ) , x ) 
         #stop criterion
         loss = loss_dict['total']
-        if math.isnan( loss ) or ( it > 10 and loss > 2*loss_list[0] ) :
-            #tqdm_it.close()
+        if math.isnan( loss ) or ( it > 10 and loss > 1.5*loss_list[0] ) or it > num_iter :
             del loss
             del loss_dict
             del x
+            tqdm_it.close()
             break
 
         optimizer.zero_grad()

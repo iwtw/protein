@@ -24,13 +24,15 @@ from loss import *
 def main(config):
 
     df = pd.read_csv( config.data['train_csv_file'] , index_col = 0  )
-    train_df , val_df =  train_test_split( df , test_size = 0.2 ,random_state = config.train['random_seed'] )
+    #df.Target = df.Target.apply( lambda x : np.array( x.split(' ') , np.uint8 )  )
+    train_df , val_df =  train_test_split( df , test_size = 0.2 ,random_state = config.train['random_seed'] , stratify = df['Target'].map(lambda x: x[:3] if '27' not in x else '0' ) )
 
     train_dataset = ProteinDataset( config , train_df ,  is_training = True , data_dir = config.data['train_dir'] )
     train_dataloader = torch.utils.data.DataLoader(  train_dataset , batch_size = config.train['batch_size']  , shuffle = True , drop_last = True , num_workers = 8 , pin_memory = False) 
+
     
     val_dataset = ProteinDataset( config , val_df ,  is_training = False , data_dir = config.data['train_dir'] )
-    val_dataloader = torch.utils.data.DataLoader(  val_dataset , batch_size = config.train['val_batch_size']  , shuffle = True , drop_last = True , num_workers = 4 , pin_memory = False) 
+    val_dataloader = torch.utils.data.DataLoader(  val_dataset , batch_size = config.train['val_batch_size']  , shuffle = False , drop_last = True , num_workers = 4 , pin_memory = False) 
 
     '''
     for k in val_dataset_name:
@@ -91,16 +93,10 @@ def main(config):
 
     compute_loss = eval( config.loss['name'] )(config = config)#.cuda()
 
-    lr_find( partial( compute_loss , epoch = 0 ) , net , optimizer , train_dataloader , forward_fn = lambda batch : net( batch['img'] ) , plot_name = "{}/lr_find_epoch_0.png".format(tb.path) )
-    torch.cuda.empty_cache()
    
-    #best_metric = {}
-    #for k in val_dataloaders:
-    #    best_metric[k] = 1e9
-    if config.train['save_max']:
-        best_metric = -1e9
-    else:
-        best_metric = 1e9
+    best_metric = {}
+    for k,save_max in config.train['save_metric'].items():
+        best_metric[k] = ((-1)**save_max ) *1e9  
     log_parser = LogParser()
 
     origin_curve = config.train['lr_curve']
@@ -114,6 +110,11 @@ def main(config):
         elif epoch == config.train['freeze_feature_layer_epochs']:
             #lr_find( partial( compute_loss , epoch = 0 ) , net , optimizer , train_dataloader , forward_fn = lambda batch : net( batch['img'] ) , plot_name = '../data/tmp/epoch_{}_begin.png'.format(epoch) )
             config.train['lr_curve'] = origin_curve 
+
+        if config.train['lr_find'] and epoch in config.loss['stage_epoch']:
+            lr_find( partial( compute_loss , epoch = epoch ) , net , optimizer , train_dataloader , forward_fn = lambda batch : net( batch['img'] ) , plot_name = '{}/lr_find_epoch_{}.png'.format(tb.path,epoch) )
+            torch.cuda.empty_cache()
+
             
 
         if epoch < config.train['freeze_feature_layer_epochs']:
@@ -251,26 +252,6 @@ def main(config):
         log_msg = log_parser.parse_log_dict( log_dicts , epoch , optimizer.param_groups[-1]['lr'] , num_imgs , config = config )
         tb.write_log(  log_msg  , use_tqdm = True )
 
-        #save
-        cmp_fn = max if config.train['save_max'] else min
-        #if best_metric > log_dicts['val'][config.train['save_metric']]:
-        new_metric = log_dicts['val'][config.train['save_metric']]
-        if cmp_fn( best_metric , new_metric ) == new_metric :
-            best_metric = new_metric
-            torch.save( { 
-                config.train['save_metric']:best_metric,
-                'epoch':epoch,
-                'model':net.state_dict(),
-                'optimizer':optimizer.state_dict()
-            } , '{}/models/{}'.format(tb.path,'best.pth'))
-        torch.save( {
-            config.train['save_metric']:log_dicts['val'][config.train['save_metric']],
-            'epoch':epoch,
-            'model':net.state_dict(),
-            'optimizer':optimizer.state_dict()
-        }, '{}/models/{}'.format(tb.path,'last.pth') )
-
-
         #log to tensorboard
         log_net_params(tb,net,epoch,len(train_dataloader))
 
@@ -282,10 +263,34 @@ def main(config):
                     else:
                         tb.add_histogram( k , v , (epoch+1)*len(train_dataloader) , tag )
 
+        #save
+
+        for k , save_max in config.train['save_metric'].items():
+            cmp_fn = max if save_max else min
+            new_metric = log_dicts['val'][k]
+            if cmp_fn( best_metric[k] , new_metric ) == new_metric :
+                best_metric[k] = new_metric
+                torch.save( { 
+                    k:best_metric[k],
+                    'epoch':epoch,
+                    'model':net.state_dict(),
+                    'optimizer':optimizer.state_dict()
+                } , '{}/models/{}'.format(tb.path,'best_{}.pth'.format(k)))
+
+        #save last snapshot
+        torch.save( {
+            **best_metric,
+            'epoch':epoch,
+            'model':net.state_dict(),
+            'optimizer':optimizer.state_dict()
+        }, '{}/models/{}'.format(tb.path,'last.pth') )
+
+
+
 
     #tb.write_log("best : {}".format( k ,best_metric[k]) )
     tb.write_log("best : {}".format( best_metric ) )
-    return { 'log_path':tb.path , config.train['save_metric']:best_metric }
+    return { 'log_path':tb.path , **best_metric }
 
 
 if __name__ == '__main__':

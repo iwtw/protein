@@ -5,6 +5,60 @@ import torch.nn.functional as F
 import torch
 import numpy as np
 
+class Loss_v7( nn.Module ):
+    '''
+    first stage : bce loss + mse
+    scond stage : bce loss + soft F1 + mse
+    '''
+    def __init__( self  , config = None ):
+        super(type(self),self).__init__()
+        self.config = config
+        self.bce = nn.BCEWithLogitsLoss()
+        self.f1_loss = F1Loss()
+        self.mse = nn.MSELoss()
+
+    def forward( self , results , batch , epoch ):
+        config = self.config
+        loss_dict = {}
+        loss_dict['bce'] = self.bce( results['fc'] , batch['label'] )
+        loss_dict['mse'] = self.mse( results['unet'] , batch['img'].detach() )
+        preds = results['fc'] > 0.0
+        loss_dict['f1_score_label'] = batch['label'] > 0.5
+        loss_dict['f1_score_pred'] = results['fc'] > 0
+        loss_dict['acc'] =  ( ( results['fc'] > 0.0 ) == ( batch['label'] > 0.5 ) ).float().mean()
+        if epoch >= self.config.loss['stage_epoch'][1]:
+            loss_dict['f1_loss'] = self.f1_loss( batch['label'] , F.sigmoid( results['fc'] ) )
+            loss_dict['total'] =  config.loss['weight_bce'] * loss_dict['bce'] +  config.loss['weight_f1'] * loss_dict['f1_loss'] + loss_dict['mse']
+        else:
+            loss_dict['total'] = config.loss['weight_bce'] * loss_dict['bce'] + config.loss['weight_mse'] * loss_dict['mse']
+        return loss_dict
+
+class Loss_v6( nn.Module ):
+    '''
+    first stage : focal loss
+    scond stage : focal loss + soft F1
+    '''
+    def __init__( self  , config = None ):
+        super(type(self),self).__init__()
+        self.config = config
+        self.focal_loss = FocalLoss()
+        self.f1_loss = F1Loss()
+        self.mse = nn.MSELoss()
+
+    def forward( self , results , batch , epoch ):
+        loss_dict = {}
+        loss_dict['focal'] = self.focal_loss( results['fc'] , batch['label'] )
+        preds = results['fc'] > 0.0
+        loss_dict['f1_score_label'] = batch['label'] > 0.5
+        loss_dict['f1_score_pred'] = results['fc'] > 0
+        loss_dict['acc'] =  ( ( results['fc'] > 0.0 ) == ( batch['label'] > 0.5 ) ).float().mean()
+        if epoch >= self.config.loss['stage_epoch'][1]:
+            loss_dict['f1_loss'] = self.f1_loss( batch['label'] , F.sigmoid( results['fc'] ) )
+            loss_dict['mse'] = self.mse( results['unet'] , batch['img'].detach() )
+            loss_dict['total'] = 0.5 * loss_dict['focal'] + 0.5 * loss_dict['f1_loss'] + loss_dict['mse']
+        else:
+            loss_dict['total'] = loss_dict['focal']
+        return loss_dict
 
 class Loss_v5( nn.Module ):
     '''
@@ -21,12 +75,11 @@ class Loss_v5( nn.Module ):
         loss_dict = {}
         loss_dict['focal'] = self.focal_loss( results['fc'] , batch['label'] )
         preds = results['fc'] > 0.0
-        labels = batch['label'] > 0.5
         loss_dict['f1_score_label'] = batch['label'] > 0.5
         loss_dict['f1_score_pred'] = results['fc'] > 0
-        loss_dict['err'] = 1 - ( ( results['fc'] > 0.0 ) == ( batch['label'] > 0.5 ) ).float().mean()
-        if epoch > self.config.loss['stage_epoch'][1]:
-            loss_dict['f1_loss'] = self.f1_loss( labels , F.sigmoid( results['fc'] ) )
+        loss_dict['acc'] =  ( ( results['fc'] > 0.0 ) == ( batch['label'] > 0.5 ) ).float().mean()
+        if epoch >= self.config.loss['stage_epoch'][1]:
+            loss_dict['f1_loss'] = self.f1_loss( batch['label'] , F.sigmoid( results['fc'] ) )
             loss_dict['total'] = 0.5 * loss_dict['focal'] + 0.5 * loss_dict['f1_loss']
         else:
             loss_dict['total'] = loss_dict['focal']
@@ -70,7 +123,7 @@ class Loss_v4( nn.Module ):
         else:
             score = results['fc']
         loss_dict['focal'] = self.focal_loss( score , batch['label'] )
-        loss_dict['err'] = 1 - ( ( score > 0.0 ) == (batch['label']>0.5) ).float().mean()
+        loss_dict['acc'] = ( ( score > 0.0 ) == (batch['label']>0.5) ).float().mean()
         loss_dict['total'] = loss_dict['focal']
         return loss_dict
 
@@ -85,7 +138,7 @@ class Loss_v3( nn.Module ):
         #print(batch['label'])
         loss_dict['mse'] = self.mse( results['layer1_fc'] , batch['label'].byte().sum( 1 ).float() )
         loss_dict['focal'] = self.focal_loss( results['fc'] , batch['label'] )
-        loss_dict['err'] = 1 - ( ( results['fc'] > 0.0 ) == (batch['label'] > 0.5 )).float().mean()
+        loss_dict['acc'] = ( ( results['fc'] > 0.0 ) == (batch['label'] > 0.5 )).float().mean()
         loss_dict['total'] = loss_dict['focal'] + loss_dict['mse']
         return loss_dict
 
@@ -99,7 +152,7 @@ class Loss_v2( nn.Module ):
         #print(batch['label'])
         fc = torch.sigmoid( results['fc'] )
         loss_dict['dice_loss'] = self.dice_loss( fc , batch['label'] )
-        loss_dict['err'] = 1 - ( ( fc > 0.5 ) == (batch['label']>0.5) ).float().mean()
+        loss_dict['acc'] = ( ( fc > 0.5 ) == (batch['label']>0.5) ).float().mean()
         loss_dict['total'] = loss_dict['dice_loss']
         return loss_dict
 
@@ -117,7 +170,7 @@ class Loss_v1( nn.Module ):
         labels = batch['label'] > 0.5
         loss_dict['f1_score_label'] = batch['label'] > 0.5
         loss_dict['f1_score_pred'] = results['fc'] > 0
-        loss_dict['err'] = 1 - ( ( results['fc'] > 0.0 ) == ( batch['label'] > 0.5 ) ).float().mean()
+        loss_dict['acc'] = ( ( results['fc'] > 0.0 ) == ( batch['label'] > 0.5 ) ).float().mean()
         loss_dict['total'] = loss_dict['focal']
         return loss_dict
 

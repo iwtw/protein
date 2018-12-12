@@ -79,7 +79,7 @@ class ProteinDataset(data.Dataset):
             img = img.reshape( img.shape[0] , img.shape[1] , 1  )
             img_channel_list.append( img )
 
-        img =  np.concatenate( img_channel_list , axis = 2 )
+        img =  np.concatenate( img_channel_list , axis = -1 )
                 
         img = self.to_pil( img )
 

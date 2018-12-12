@@ -13,8 +13,7 @@ train['val_batch_size'] = 32
 
 train['log_step'] = 100
 train['save_epoch'] = 1
-train['save_metric'] = 'macro_f1_score'
-train['save_max'] = True
+train['save_metric'] = {'macro_f1_score':True , 'focal':False , 'acc':True }#True : saves the max , False : saves the min
 train['optimizer'] = 'Adam'
 train['learning_rate'] = 1e-1
 
@@ -33,6 +32,7 @@ train['mannual_learning_rate'] = True
 train['lr_for_parts'] = [1/10,1/3,1]
 #train['lrs'] = [ 1e-1 , 1e-2 , 1e-3 , 1e-4 ]
     
+train['lr_find'] = False
 
 #settings for cosine annealing learning rate
 train['lr_curve'] = 'one_cycle'
@@ -66,9 +66,9 @@ train['resume_optimizer'] = False
 
 global net
 net = {}
-net['name'] = 'gluoncv_resnet_v6.resnet34'
+net['name'] = 'gluoncv_resnet_v2.resnet34'
 net['input_shape'] = (512,512)
-net['pretrained'] = False
+net['pretrained'] = True
 
 
 
@@ -79,11 +79,15 @@ loss['arcloss_start_epoch'] = 10
 loss['m'] = 0.2
 loss['s'] = 16
 
+
+loss['weight_mse']  = 0.5
+loss['weight_bce'] = 1
+loss['weight_f1'] = 1
 #loss['weight_l2_reg'] = 5e-4
 loss['weight_l2_reg'] = 5e-6
 
 test = {}
-test['model'] = '../save/gluoncv_resnet_v6.resnet34_shape256,256_seed0_Adam/20181205_153013/models/last.pth'
+test['model'] = '../save/gluoncv_resnet_v6.resnet34_shape512,512_seed0_Adam/20181207_012030/models/best.pth'
 test['batch_size'] = 16
 test['tta'] = 16
 
@@ -111,7 +115,7 @@ def parse_config():
     net['num_classes'] = 28
     net['dilated'] = False
     net['dropout'] = 0.5
-    if 'v6' in net_name or 'v7' in net_name:
+    if 'v6' in net_name or 'v7' in net_name or 'v10' in net_name:
         net['se_kwargs'] = {}
         net['se_kwargs']['pool_fn'] = partial( nn.AdaptiveAvgPool2d , output_size = (1,1) )
     

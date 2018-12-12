@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
+import torch
 
 class FocalLoss(nn.Module):
     def __init__(self, gamma=2):
@@ -34,15 +35,21 @@ class F1Loss(nn.Module):
         super(type(self),self).__init__()
 
     def forward(self, y_true, y_pred , eps = 1e-8 ):
-        #y_true = ( y_true > 0.5 ).float()
+        y_true = ( y_true > 0.5 ).float()
         tp = (y_true*y_pred).sum(0)
-        #tn = ((1-y_true)*(1-y_pred).sum(0)
         fp = ((1-y_true)*y_pred).sum(0)
         fn = (y_true*(1-y_pred)).sum(0)
 
-        p = tp / (tp + fp ) #+ eps )
-        r = tp / (tp + fn ) #+ eps )
+        p = tp / ( (tp + fp ) + eps )
+        r = tp / ( (tp + fn ) + eps )
 
-        f1 = 2*p*r / (p+r ) #+ eps ))
-        f1 = torch.where(torch.isnan(f1), torch.zeros_like(f1), f1)
+
+        f1 = 2*p*r / ( (p+r ) + eps  )
+        #f1 = ( 2 * tp**2 ) / ( 2*tp**2 + tp * ( fp+fn ) )
+
+
+        f1 = torch.where((torch.isnan(f1)) , torch.zeros_like(f1), f1)
+        #f1 = torch.where( (tp == 0) and (( tp+fn ) == 0)  , torch.ones_like(f1) , f1 )
         return 1 - f1.mean()
+
+

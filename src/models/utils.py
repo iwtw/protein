@@ -23,7 +23,7 @@ def get_optim_config(net,lr_for_parts = [1]):
         elif 'classifier' in name:
             part_idx = 2 
 
-        if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Conv1d):
+        if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Conv1d) or isinstance( m , torch.nn.ConvTranspose2d ):
             ps = list(m.parameters())
             '''
             conv_cnt += 1
