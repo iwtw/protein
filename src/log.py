@@ -21,10 +21,10 @@ class LogParser:
 
     def parse_log_dict( self,  log_dicts , epoch , lr , num_imgs , config):
         for tag in log_dicts:
-            d = { k:log_dicts[tag][k] for k in filter( lambda x : isinstance(log_dicts[tag][x],float) , log_dicts[tag] ) } 
+            #d = { k:log_dicts[tag][k] for k in filter( lambda x : isinstance(log_dicts[tag][x],float) , log_dicts[tag] ) } 
             if 'f1_score_label' in log_dicts[tag]:
-                d['macro_f1_score'] = f1_score( log_dicts[tag]['f1_score_label'] , log_dicts[tag]['f1_score_pred']  , average = 'macro' )
-            log_dicts[tag] = d
+                log_dicts[tag]['macro_f1_score'] = f1_score( log_dicts[tag]['f1_score_label'] , log_dicts[tag]['f1_score_pred']  , average = 'macro' )
+            #log_dicts[tag] = d
 
         t = time()
         log_msg = ""
@@ -43,14 +43,38 @@ class LogParser:
             log_dict = log_dicts[tag]
             for idx,k_v in enumerate(log_dict.items()):
                 k,v = k_v
-                if 'err' in k:
-                    k = k.replace('err','acc')
-                    v = 1 - v
-                spec_list = ['err','acc','top']
-                if sum( [ word  in k for word in spec_list ] ):
-                    log_msg += "{} {:.3%} {} ".format(k,v,',' if idx < len(log_dict) -1 else '\n')
-                else:
-                    log_msg += "{} {:.5f} {} ".format(k,v,',' if idx < len(log_dict) -1 else '\n')
+                if isinstance( v , float):
+                    if 'err' in k:
+                        k = k.replace('err','acc')
+                        v = 1 - v
+                    spec_list = ['err','acc','top']
+                    if sum( [ word  in k for word in spec_list ] ):
+                        log_msg += "{} {:.3%} {} ".format(k,v,',' if idx < len(log_dict) -1 else '\n')
+                    else:
+                        log_msg += "{} {:.5f} {} ".format(k,v,',' if idx < len(log_dict) -1 else '\n')
+            if all( map( lambda x : x in log_dict , ['tp','tn','fp','fn']) ):
+                tp = log_dict['tp'].sum(0).astype(np.float32)
+                tn = log_dict['tn'].sum(0).astype(np.float32)
+                fp = log_dict['fp'].sum(0).astype(np.float32)
+                fn = log_dict['fn'].sum(0).astype(np.float32)
+                '''
+                print( "tp :" ,  tp )
+                print( "tn :" ,  tn )
+                print( "fp :" ,  fp )
+                print( "fn :" ,  fn )
+                '''
+                p = log_dict['precision'] = tp / (tp + fp  + 1e-8 )
+                r = log_dict['recall'] = tp / (tp + fn + 1e-8 )
+                log_dict['f1_score'] = (2 * p * r ) / ( p+r + 1e-8 )
+                log_msg += "       precision "
+                log_msg += np.array2string( log_dict['precision'] , formatter = {'float_kind':lambda x : "{:.2%}".format(x) }  ,max_line_width = 1000)
+                log_msg += '\n'
+                log_msg += "       recall "
+                log_msg += np.array2string( log_dict['recall'] , formatter = {'float_kind':lambda x : "{:.2%}".format(x) } ,max_line_width = 1000)
+                log_msg += '\n'
+                log_msg += "       f1_score "
+                log_msg += np.array2string( log_dict['f1_score'] , formatter = {'float_kind':lambda x : "{:.2%}".format(x) } ,max_line_width = 1000)
+                log_msg += '\n'
         self.t = t
         return log_msg
 

@@ -18,6 +18,18 @@ from tqdm import tqdm
 from copy import deepcopy
 import sys
 
+def aggregate_results( results , bag_sizes , aggregate_fn):
+    new_results = {}
+    for k in results:
+        new_results[k] = []
+    cnt = 0
+    for bag_size in  bag_sizes : 
+        for k in results:
+            new_results[k].append( aggregate_fn( results[k][cnt:cnt+bag_size ]  )  )
+            cnt += bag_size
+    new_results = { k:torch.stack( new_results[k] , 0  ) for k in results }
+    return new_results
+
 def mannual_learning_rate( optimizer , epoch ,  step , num_step_epoch , config ):
     
     bounds = config.train['lr_bounds'] 
@@ -89,7 +101,7 @@ def mannual_learning_rate( optimizer , epoch ,  step , num_step_epoch , config )
                 param_group['momentum'] = y2
 
 
-def lr_find(loss_fn,net,optimizer,dataloader,forward_fn,start_lr=1e-5,end_lr = 10 , num_iter = None ,  plot_name = None ):
+def lr_find(loss_fn,net,optimizer,dataloader,forward_fn,warp_batch_fn = None , start_lr=1e-5,end_lr = 10 , num_iter = None ,  plot_name = None ):
 
     origin_net_state = deepcopy( net.state_dict() )
     origin_optimizer_state = deepcopy( optimizer.state_dict() )
@@ -108,6 +120,9 @@ def lr_find(loss_fn,net,optimizer,dataloader,forward_fn,start_lr=1e-5,end_lr = 1
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr * param_group['lr_mult']
         temp_loss_list = []
+
+        if warp_batch_fn is not None:
+            x = warp_batch_fn( x )
         for k in x:
             if isinstance( x[k] , torch.Tensor ):
                 x[k] = x[k].cuda()

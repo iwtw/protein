@@ -151,7 +151,7 @@ class BasicBlock(nn.Module):
     examples:
         BasicBlock(32,32,activation_fn = partial( torch.nn.LeakyReLU , negative_slope = 0.1 , inplace = True ))
     """
-    def __init__(self, in_channels , out_channels , kernel_size , stride = 1 , use_batchnorm = False , activation_fn = partial( nn.ReLU ,  inplace=True ) , last_activation_fn = partial( nn.ReLU , inplace=True ) , pre_activation = False , scaling_factor = 1.0):
+    def __init__(self, in_channels , out_channels , kernel_size , stride = 1 , use_batchnorm = False , activation_fn = partial( nn.ReLU ,  inplace=True ) , last_activation_fn = partial( nn.ReLU , inplace=True  ) , pre_activation = False , scaling_factor = 1.0):
         super(BasicBlock, self).__init__()
         bias = False if use_batchnorm else True
         if pre_activation and stride == 2:
@@ -183,7 +183,7 @@ class BasicBlock(nn.Module):
         out = self.conv2(out)
 
         #print(out.shape,residual.shape)
-        out += residual * self.scaling_factor
+        out = out + residual * self.scaling_factor
         if self.last_activation is not None:
             out = self.last_activation( out )
 
@@ -225,7 +225,7 @@ class BottleneckBlock( nn.Module ):
         out = self.conv3(out)
 
         #print(out.shape,residual.shape)
-        out += residual * self.scaling_factor
+        out = out + residual * self.scaling_factor
         if self.last_activation is not None:
             out = self.last_activation( out )
 

@@ -4,7 +4,7 @@ from dataset import *
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
-from utils import load_model
+from utils import load_model,aggregate_results,set_requires_grad
 from time import time
 import os
 import train_config as config
@@ -15,6 +15,7 @@ import scipy.optimize as opt
 import torch.nn.functional as F
 from sklearn.metrics import f1_score
 import torch.nn as nn
+from functools import partial
 
 th_magic = np.array([0.565,0.39,0.55,0.345,0.33,0.39,0.33,0.45,0.38,0.39,
                0.34,0.42,0.31,0.38,0.49,0.50,0.38,0.43,0.46,0.40,
@@ -61,18 +62,26 @@ def save_pred(pred,th,out_name):
     out_fp = open( out_name , 'w')
     out_fp.write('Id,Predicted\n')
 
-    filenames = pd.read_csv( config.data['test_csv_file'] , index_col = 0 ).index.values
+    filenames = pd.read_csv( '../data/test.csv' , index_col = 0 ).index.values
+    Id = test_df.index.values
 
-    for idx , (filename , fc) in enumerate( zip( filenames , pred )): 
-        predict = np.arange( config.net['num_classes'] )[ fc > th ]
-        p = predict.tolist()
-        if isinstance(p,int) :
-            p = [p]
-        if len(p) == 0 :
-            p = [ fc.argmax().tolist() ] 
+    pred_dict = { k : v for k,v in zip(Id,pred)}
 
-        p = [ x for x in map( lambda x : str(x) , p ) ] 
+    for filename  in filenames: 
+        if filename in pred_dict:
+            fc = pred_dict[filename]
+            predict = np.arange( config.net['num_classes'] )[ fc > th ]
+            p = predict.tolist()
+            if isinstance(p,int) :
+                p = [p]
+            if len(p) == 0 :
+                p = [ fc.argmax().tolist() ] 
+
+            p = [ x for x in map( lambda x : str(x) , p ) ] 
+        else:
+            p = []
         out_fp.write( filename+',' + ' '.join(p)+'\n' )
+
 
     out_fp.close()
 
@@ -80,34 +89,49 @@ if __name__ == '__main__' :
     #args = parse_args()
 
 
-    df = pd.read_csv( config.data['train_csv_file'] , index_col = 0  )
-    train_df , val_df =  train_test_split( df , test_size = 0.1 , random_state = config.train['random_seed'] )
-    test_df = pd.read_csv( config.data['test_csv_file'] , index_col = 0  )
 
+    if config.train['MIL']:
+        df = pd.read_csv( '../data/train_single_cell_crop.csv' , index_col = 0  )
+        test_df = pd.read_csv( '../data/test_single_cell_crop.csv' , index_col = 0  )
+        train_data_dir =  '/mnt/ssd_raid0/wtw/datasets/human_protein/train_single_cell_crop'
+        test_data_dir = '/mnt/ssd_raid0/wtw/datasets/human_protein/test_single_cell_crop'
+        dataset_fn = MILProteinDataset
+        dataloader_fn = partial( torch.utils.data.DataLoader , collate_fn = mil_collate_fn )
+    else:
+        df = pd.read_csv( '../data/train.csv' , index_col = 0  )
+        test_df = pd.read_csv( '../data/test.csv' , index_col = 0  )
+        train_data_dir =  '/mnt/ssd_raid0/wtw/datasets/human_protein/train'
+        test_data_dir = '/mnt/ssd_raid0/wtw/datasets/human_protein/test'
+        dataset_fn = ProteinDataset
+        dataloader_fn = torch.utils.data.DataLoader
 
-    val_dataset = ProteinDataset( config , val_df ,  is_training = False , tta = config.test['tta'] , data_dir = config.data['train_dir'] )
-    val_dataloader = torch.utils.data.DataLoader(  val_dataset , batch_size = config.test['batch_size']  , shuffle = False , drop_last = False , num_workers = 8 , pin_memory = False) 
-
-    test_dataset = ProteinDataset( config , test_df ,  is_training = False , tta = config.test['tta'] , data_dir = config.data['test_dir'] , has_label = False )
-    test_dataloader = torch.utils.data.DataLoader(  test_dataset , batch_size = config.test['batch_size']  , shuffle = False , drop_last = False , num_workers = 8 , pin_memory = False) 
     
+    train_df , val_df =  train_test_split( df , test_size = config.data['test_size'] ,random_state = config.train['random_seed'] , stratify = df['Target'].map(lambda x: x[:3] if '27' not in x else '0' ) )
+
+    val_dataset = dataset_fn( config , val_df ,  is_training = False , tta = config.test['tta'] , data_dir = train_data_dir )
+    val_dataloader = dataloader_fn(  val_dataset , batch_size = config.test['batch_size']  , shuffle = False , drop_last = False , num_workers = 8 , pin_memory = False) 
+
+    test_dataset = dataset_fn( config , test_df ,  is_training = False , tta = config.test['tta'] , data_dir = test_data_dir , has_label = False )
+    test_dataloader = dataloader_fn(  test_dataset , batch_size = config.test['batch_size']  , shuffle = False , drop_last = False , num_workers = 8 , pin_memory = False) 
+
             
+
     net_kwargs = deepcopy( config.net )
     net_name = net_kwargs.pop('name')
 
     net = eval("models.{}".format(net_name))(**net_kwargs)
     net = nn.DataParallel( net )
     net.cuda()
+    set_requires_grad( net , False )
     
 
 
-    #last_epoch = load_model( net , args.resume , epoch = args.resume_epoch  , strict = False) 
     load_dict = torch.load(config.test['model']) 
+    #for k in load_dict['model']:
+    #    print(k)
     net.load_state_dict( load_dict['model'] , strict = True )
     print( 'Sucessfully load {} , epoch {}'.format(config.test['model'],load_dict['epoch']) )
 
-    #log_dir = '{}/test/{}'.format(args.resume,args.dataset)
-    #os.system('mkdir -p {}'.format(log_dir) )
 
     net.eval()
     val_pred = []
@@ -115,20 +139,37 @@ if __name__ == '__main__' :
     acc_list = []
     with torch.no_grad():
         for step , batch in tqdm(enumerate( val_dataloader ) , total = len(val_dataloader) ):
+
+            #print( type( batch['img'][0] ) )
+            #TTA
+            if config.train['MIL']:
+                bag_sizes = [ len( v ) for v in batch['img'] ]
+                batch['img'] = torch.cat( batch['img'] , 0 )
+
             for k in batch:
-                if k == 'img':
-                    batch[k] = batch[k].cuda(async = True)
+                if k in ['img']:
+                    batch[k] = batch[k].cuda(async=True)
                     batch[k].requires_grad = False
 
+            
             results_list = []
-            for i in range( batch['img'].shape[1] ):
-                results_list.append( net( batch['img'][:,i] )['fc'].cpu().detach() )
-            batch_fc = torch.stack( results_list , dim = -1  )
+            for i in range( config.test['tta'] ):
+                results = net( batch['img'][:,i] )
+                for k in results:
+                    results[k] = results[k].detach().cpu()
+                if config.train['MIL']:
+                    results = aggregate_results( results , bag_sizes , config.train['MIL_aggregate_fn'])
+                results_list.append( results )
+            
+            batch_fc = [ x['fc'] for x in results_list ]
+            batch_fc = torch.stack( batch_fc , dim = -1  )
+            #print( batch_fc.shape )
             #batch_fc = batch_fc.max( dim = - 1 )[0]
+            batch_fc = F.sigmoid( batch_fc )
             batch_fc = batch_fc.mean( dim = - 1 )
-            val_pred.append( F.sigmoid( batch_fc ).detach().cpu().numpy() ) 
+            val_pred.append( batch_fc.detach().cpu().numpy() ) 
             val_label.append( batch['label'].numpy() )
-            acc = ( ( batch_fc > 0.0 ) == (batch['label'] > 0.5 ) ).float().mean()
+            acc = ( ( batch_fc.cpu().detach() > 0.5 ) == (batch['label'] > 0.5 ) ).float().mean()
             acc_list.append( acc.numpy() )
             #tqdm.write( str( acc ) )
 
@@ -146,7 +187,7 @@ if __name__ == '__main__' :
     print('Fractions: \n',(val_pred > th).mean(axis=0))
     print('Fractions (true): \n',(val_label > th).mean(axis=0))
 
-    labels = pd.read_csv(config.data['train_csv_file']).set_index('Id')
+    labels = pd.read_csv('../data/train.csv')
     label_count = np.zeros(config.net['num_classes'])
     for label in labels['Target']:
         l = [int(i) for i in label.split()]
@@ -159,27 +200,42 @@ if __name__ == '__main__' :
     test_pred = []
     with torch.no_grad():
         for step , batch in tqdm(enumerate( test_dataloader ) , total = len(test_dataloader) ):
+
+            if config.train['MIL']:
+                bag_sizes = [ len( v ) for v in batch['img'] ]
+                batch['img'] = torch.cat( batch['img'] , 0 )
+
             for k in batch:
-                if k == 'img':
-                    batch[k] = batch[k].cuda(async = True)
+                if k in ['img']:
+                    batch[k] = batch[k].cuda(async=True)
                     batch[k].requires_grad = False
 
+            
             results_list = []
-            for i in range( batch['img'].shape[1] ):
-                results_list.append( net( batch['img'][:,i] )['fc'].cpu().detach() )
-            batch_fc = torch.stack( results_list , dim = -1  )
+            for i in range( config.test['tta'] ):
+                results = net( batch['img'][:,i] )
+                for k in results:
+                    results[k] = results[k].detach().cpu()
+                if config.train['MIL']:
+                    results = aggregate_results( results , bag_sizes , config.train['MIL_aggregate_fn'])
+                results_list.append( results )
+            
+            batch_fc = [ x['fc'] for x in results_list ]
+            batch_fc = torch.stack( batch_fc , dim = -1  )
             #batch_fc = batch_fc.max( dim = -1 )[0]
-            batch_fc = batch_fc.mean( dim = - 1 )
             batch_fc = F.sigmoid( batch_fc )
+            batch_fc = batch_fc.mean( dim = - 1 )
             for x in batch_fc.numpy() :
                 test_pred.append( x )
 
     #label_count, label_fraction
 
     th_train = fit_test( test_pred , label_fraction , config.net['num_classes'] )
+    print( 'threshold train :\n' , th_train )
     th_lb = fit_test( test_pred , lb_prob , config.net['num_classes'])
     save_pred( test_pred , th_train , '../submit/{}'.format( config.test['model'].split('/')[-3] + '_train.csv' ) )
     save_pred( test_pred , th, '../submit/{}'.format( config.test['model'].split('/')[-3] + '_val.csv' ) )
     save_pred( test_pred , th_lb , '../submit/{}'.format( config.test['model'].split('/')[-3] + '_lb_prob.csv' ) )
     save_pred( test_pred , 0.5 , '../submit/{}'.format( config.test['model'].split('/')[-3] + '_05.csv' ) )
+    return test_pred
 

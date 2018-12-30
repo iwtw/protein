@@ -3,9 +3,12 @@ import torch.nn.functional as F
 import torch
 
 class FocalLoss(nn.Module):
-    def __init__(self, gamma=2):
+    def __init__(self, gamma=2 , weight = None):
         super(type(self),self).__init__()
         self.gamma = gamma
+        self.weight = weight
+        if self.weight is not None:
+            self.normalized_weight = self.weight / weight.sum()
         
     def forward(self, input, target):
         if not (target.size() == input.size()):
@@ -17,6 +20,10 @@ class FocalLoss(nn.Module):
         invprobs = F.logsigmoid(-input * ((target > 0.5).float() * 2.0 - 1.0))
         loss = (invprobs * self.gamma).exp() * loss
         
+        if self.weight is None:
+            loss = 1.0 / loss.shape[1] * loss
+        else:
+            loss = loss * self.normalized_weight.view(1,-1)
         return loss.sum(dim=1).mean()
 
 class DiceLoss(nn.Module):

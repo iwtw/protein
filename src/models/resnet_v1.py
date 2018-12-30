@@ -2,7 +2,8 @@ import torch.nn as nn
 import math
 import torch.utils.model_zoo as model_zoo
 from numpy import prod
-from layers import *
+from .layers import *
+import torch
 
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -92,6 +93,7 @@ class ResNet( nn.Module ):
             strides,
             num_classes,
             input_shape ,
+            fm_mult = 1.0 , 
             first_kernel_size = 7 ,
             use_batchnorm=True,
             activation_fn=partial(nn.ReLU,inplace=True),
@@ -100,14 +102,15 @@ class ResNet( nn.Module ):
             feature_layer_dim=None,
             dropout = 0.0 ):
         super(ResNet,self).__init__()
+        num_features = [ int(i*fm_mult) for i in num_features ]
+
         self.use_batchnorm = use_batchnorm
         self.activation_fn = activation_fn
         self.pre_activation = pre_activation
         self.use_maxpool = use_maxpool
-        self.use_avgpool = use_avgpool
         #assert len(num_features) == 5 
         #assert len(num_blocks) == 4 
-        self.conv1 = conv( 3 , num_features[0] , first_kernel_size , strides[0] , first_kernel_size//2 , activation_fn , use_batchnorm = use_batchnorm , bias = False  )
+        self.conv1 = conv( 4 , num_features[0] , first_kernel_size , strides[0] , first_kernel_size//2 , activation_fn , use_batchnorm = use_batchnorm , bias = False  )
         if self.use_maxpool:
             self.maxpool = nn.MaxPool2d( 3,2,1 )
 
@@ -120,15 +123,28 @@ class ResNet( nn.Module ):
             self.post_bn = nn.Sequential( nn.BatchNorm2d( num_features[-1] ) , activation_fn() )
 
 
-        if use_avgpool:
-            self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.avgpool = nn.AdaptiveAvgPool2d((1,1))
+        self.maxpool2 = nn.AdaptiveMaxPool2d((1,1))
 
         if feature_layer_dim is not None:
             self.fc1 = nn.Sequential( Flatten() , linear( num_features[-1] * shape , feature_layer_dim , activation_fn = None , pre_activation  = False , use_batchnorm = use_batchnorm) )
         self.dropout = nn.Dropout( dropout )
 
-        self.fc2 = linear( feature_layer_dim if feature_layer_dim is not None else num_features[-1]  , num_classes , use_batchnorm = False )
+        self.classifier = nn.Sequential( 
+                Flatten(),
+                nn.BatchNorm1d(num_features[-1]*2),
+                nn.Dropout( dropout ),
+                linear( num_features[-1]*2,num_features[-1] ),
+                nn.ReLU(),
+                nn.BatchNorm1d( num_features[-1] ),
+                nn.Dropout( dropout ),
+                linear(num_features[-1] , num_classes)
+                )
 
+        for m in self.modules():
+            if isinstance(m, nn.BatchNorm1d ) or isinstance(m,nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
 
         #self.fc2 = ArcLinear( feature_layer_dim if feature_layer_dim is not None else num_features[-1] * shape , num_classes )
 
@@ -149,9 +165,10 @@ class ResNet( nn.Module ):
         if self.pre_activation:
             out = self.post_bn( out )
 
-        if self.use_avgpool:
-            out = self.avgpool(out)
-        fc = self.fc2( out )
+        avg = self.avgpool(out)
+        max_ = self.maxpool2(out)
+        out = torch.cat( [avg,max_] , 1 )
+        fc = self.classifier( out )
         return {'fc':fc}
 
 
@@ -162,7 +179,8 @@ def resnet18(pretrained=False, **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
+    num_features = [64,64,128,256,512]
+    model = ResNet(BasicBlock, [2, 2, 2, 2] , num_features , **kwargs)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet18']))
     return model
@@ -175,7 +193,8 @@ def resnet34(pretrained=False, **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
+    num_features = [64,64,128,256,512]
+    model = ResNet(BasicBlock, [3, 4, 6, 3], num_features , **kwargs)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet34']))
     return model
@@ -188,7 +207,8 @@ def resnet50(pretrained=False, **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
+    num_features = [64,64*4,128*4,256*4,512*4]
+    model = ResNet(Bottleneck, [3, 4, 6, 3],num_features , **kwargs)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet50']))
     return model
@@ -201,7 +221,8 @@ def resnet101(pretrained=False, **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
+    num_features = [64,64*4,128*4,256*4,512*4]
+    model = ResNet(Bottleneck, [3, 4, 23, 3],num_features ,  **kwargs)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet101']))
     return model
@@ -214,7 +235,8 @@ def resnet152(pretrained=False, **kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
+    num_features = [64,64*4,128*4,256*4,512*4]
+    model = ResNet(Bottleneck, [3, 8, 36, 3], num_features ,  **kwargs)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet152']))
     return model

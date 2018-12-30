@@ -32,14 +32,20 @@ def get_class_weight(train_distribution,dampening='log'):
     total_labels = np.sum( train_distribution )
 
     if dampening == None:
-        return None
+        weight = None
     elif dampening == 'log':
         mu = 0.5
         weight = np.log( mu * total_labels / train_distribution ) 
         weight[weight<1.0] = 1.0
-        weight = torch.Tensor( weight )
+    elif dampening == 'linear_interpolation':
+        mu = 0.5
+        equal_weight = 1 / len(train_distribution)
+        weight = total_labels / train_distribution + mu * ( equal_weight - total_labels / train_distribution )
     else :
         raise ValueError("dampening type '{}' not supported".format( dampening ))
+
+    if weight is not None:
+        weight = torch.Tensor( weight )
     return weight
 
 
@@ -59,7 +65,13 @@ def main(config):
         train_dataset = ProteinDataset( config , train_df ,  is_training = True , data_dir = config.data['train_dir'] , image_format = config.data['image_format'])
         val_dataset = ProteinDataset( config , val_df ,  is_training = False , data_dir = config.data['train_dir'] , image_format = config.data['image_format'])
 
-    train_dataloader = torch.utils.data.DataLoader(  train_dataset , batch_size = config.train['batch_size']  , collate_fn = mil_collate_fn ,  shuffle = True , drop_last = True , num_workers = 8 , pin_memory = False) 
+    sampler_weight = get_class_weight( train_distribution  , dampening = config.data['class_sampler_dampening'] )
+    print( 'sampler weight : ' , sampler_weight )
+    if sampler_weight is None:
+        sampler = torch.utils.data.RandomSampler( train_dataset )
+    else:
+        sampler = torch.utils.data.WeightedRandomSampler( weights = sampler_weight , num_samples = len( train_dataset ) , replacement = True )
+    train_dataloader = torch.utils.data.DataLoader(  train_dataset , batch_size = config.train['batch_size']  , collate_fn = mil_collate_fn ,  sampler = sampler , drop_last = True , num_workers = 8 , pin_memory = False) 
     val_dataloader = torch.utils.data.DataLoader(  val_dataset , batch_size = config.train['val_batch_size']  , shuffle = False , drop_last = False , num_workers = 8 , pin_memory = False) 
     '''
     for k in val_dataset_name:
@@ -81,7 +93,7 @@ def main(config):
     net.cuda()
     
     tb = TensorBoardX(config = config , log_dir = config.train['log_dir'] , log_type = ['train' , 'val' , 'net'] )
-    tb.write_net(str(net),silent=False)
+    tb.write_net(str(net),silent=True)
 
     optim_config = models.utils.get_optim_config(net,config.train['lr_for_parts'])
 

@@ -125,8 +125,9 @@ class ResNet(nn.Module):
     """
     # pylint: disable=unused-variable
     def __init__(self, block, layers, num_classes=1000, dilated=True,dropout=0,
-                 deep_base=False, norm_layer=nn.BatchNorm2d, input_shape = (224,224)):
+                 deep_base=False, norm_layer=nn.BatchNorm2d, input_shape = (224,224) , fm_mult = 1.0 ):
         self.inplanes = 128 if deep_base else 64
+
         super(ResNet, self).__init__()
         if deep_base:
             self.conv1 = nn.Sequential(
