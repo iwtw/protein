@@ -5,8 +5,8 @@ def mix(mix_class,out_csv_fname):
     original_train_df = pd.read_csv( '../../data/train.csv' , index_col = 0 )
     original_train_df['Directory'] = '/home/wtw/kaggle/human_protein/data/train'
     original_train_df['ImageFormat'] = 'png'
-    external_train_df = pd.read_csv( '../../data/HPAv18RBGY_wodpl.csv' , index_col = 0 )
-    external_train_df['Directory'] = '/home/wtw/kaggle/human_protein/data/HPAv18_images_512x512'
+    external_train_df = pd.read_csv( '../../data/external/HPAv18RBGY_wodpl.csv' , index_col = 0 )
+    external_train_df['Directory'] = '/home/wtw/kaggle/human_protein/data/external/HPAv18_images_512x512'
     external_train_df['ImageFormat'] = 'jpg'
 
     external_train_df.Target = external_train_df.Target.apply( lambda x : np.array( x.split(' ') , np.uint8 ) )

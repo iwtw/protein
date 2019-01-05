@@ -85,28 +85,34 @@ def save_pred(pred,th,out_name):
 
     out_fp.close()
 
-if __name__ == '__main__' :
+def main(config):
     #args = parse_args()
 
 
+    global test_df
 
     if config.train['MIL']:
-        df = pd.read_csv( '../data/train_single_cell_crop.csv' , index_col = 0  )
+        #df = pd.read_csv( '../data/train_single_cell_crop.csv' , index_col = 0  )
         test_df = pd.read_csv( '../data/test_single_cell_crop.csv' , index_col = 0  )
         train_data_dir =  '/mnt/ssd_raid0/wtw/datasets/human_protein/train_single_cell_crop'
         test_data_dir = '/mnt/ssd_raid0/wtw/datasets/human_protein/test_single_cell_crop'
         dataset_fn = MILProteinDataset
         dataloader_fn = partial( torch.utils.data.DataLoader , collate_fn = mil_collate_fn )
     else:
-        df = pd.read_csv( '../data/train.csv' , index_col = 0  )
+        #df = pd.read_csv( '../data/train.csv' , index_col = 0  )
         test_df = pd.read_csv( '../data/test.csv' , index_col = 0  )
-        train_data_dir =  '/mnt/ssd_raid0/wtw/datasets/human_protein/train'
-        test_data_dir = '/mnt/ssd_raid0/wtw/datasets/human_protein/test'
+        train_data_dir =  '../data/train'
+        test_data_dir = '../data/test'
         dataset_fn = ProteinDataset
         dataloader_fn = torch.utils.data.DataLoader
 
+    df = pd.read_csv( config.data['train_csv_file'] , index_col = 0  )
     
     train_df , val_df =  train_test_split( df , test_size = config.data['test_size'] ,random_state = config.train['random_seed'] , stratify = df['Target'].map(lambda x: x[:3] if '27' not in x else '0' ) )
+    print(len(val_df))
+    original_train_df = pd.read_csv( '../data/train.csv', index_col = 0 )
+    val_df = val_df[val_df.index.map( lambda x : x in original_train_df.index )]
+    print(len(val_df))
 
     val_dataset = dataset_fn( config , val_df ,  is_training = False , tta = config.test['tta'] , data_dir = train_data_dir )
     val_dataloader = dataloader_fn(  val_dataset , batch_size = config.test['batch_size']  , shuffle = False , drop_last = False , num_workers = 8 , pin_memory = False) 
@@ -238,4 +244,7 @@ if __name__ == '__main__' :
     save_pred( test_pred , th_lb , '../submit/{}'.format( config.test['model'].split('/')[-3] + '_lb_prob.csv' ) )
     save_pred( test_pred , 0.5 , '../submit/{}'.format( config.test['model'].split('/')[-3] + '_05.csv' ) )
     return test_pred
+
+if __name__ == '__main__' :
+    main(config)
 

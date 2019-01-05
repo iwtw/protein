@@ -12,6 +12,7 @@ gluoncv
 - v10: v9 + SE
 - v11: v9 + decoder
 - v13: v9 + fm\_mult
+- v14: v13 + zero\_gamma + first kernal 7x7 to 3x3 * 3
 
 custom resnet
 - v1: + fastai style classifier

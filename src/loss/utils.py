@@ -8,7 +8,7 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.weight = weight
         if self.weight is not None:
-            self.normalized_weight = self.weight / weight.sum()
+            self.normalized_weight = nn.Parameter( self.weight / weight.sum() , requires_grad = False )
         
     def forward(self, input, target):
         if not (target.size() == input.size()):
@@ -38,8 +38,11 @@ class DiceLoss(nn.Module):
         return score
 
 class F1Loss(nn.Module):
-    def __init__( self ):
+    def __init__( self  , weight = None ):
         super(type(self),self).__init__()
+        self.weight = weight
+        if self.weight is not None:
+            self.normalized_weight = nn.Parameter( self.weight / weight.sum() , requires_grad = False )
 
     def forward(self, y_true, y_pred , eps = 1e-8 ):
         y_true = ( y_true > 0.5 ).float()
@@ -57,6 +60,12 @@ class F1Loss(nn.Module):
 
         f1 = torch.where((torch.isnan(f1)) , torch.zeros_like(f1), f1)
         #f1 = torch.where( (tp == 0) and (( tp+fn ) == 0)  , torch.ones_like(f1) , f1 )
-        return 1 - f1.mean()
+
+        if self.weight is None:
+            f1 = 1.0 / f1.shape[0] * f1
+        else:
+            f1 = f1 * self.normalized_weight
+        f1 = f1.sum()
+        return 1 - f1
 
 

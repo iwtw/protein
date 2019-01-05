@@ -179,10 +179,32 @@ def main(config):
                     bag_sizes = [ len( v ) for v in batch['img'] ]
                     batch['img'] = torch.cat( batch['img'] , 0 )
 
+                if config.train['mix_up']:
+                    batch_size = batch['img'].shape[0]
+                    '''
+                    print('-------------------')
+                    print('before mix up')
+                    print(batch['label'][:5])
+                    print(batch['label'][batch_size//2:batch_size//2+5])
+                    '''
+                    lambda_ = torch.Tensor( np.random.beta(0.2,0.2,batch_size//2) )
+                    #print( 'lambda ' ,  lambda_[:5] )
+                    for k,v in batch.items():
+                        if isinstance(v,torch.Tensor):
+                            lambda_view = lambda_.view( [batch_size//2] + [1 for i in range(len(v.shape)-1)] )
+                            batch[k] = lambda_view * batch[k][:batch_size//2]  + ( 1 - lambda_view ) * batch[k][batch_size//2:]
+
+                    '''
+                    print('after mix up')
+                    print(batch['label'][:5])
+                    print(batch['label'][batch_size//2:batch_size//2+5])
+                    '''
+
+
                 for k in batch:
                     if not k in ['filename']:
                         batch[k] = batch[k].cuda(async =  True) 
-                        batch[k].requires_grad = False
+                        batch[k].detach_() 
 
                 results = net( batch['img'] )
 

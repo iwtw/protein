@@ -10,6 +10,7 @@ train['random_seed'] = 0
 
 train['MIL'] = False
 train['MIL_aggregate_fn'] = partial( torch.mean  , dim = 0 )
+train['mix_up'] = False
 
 train['batch_size'] = 32 
 train['val_batch_size'] = 32
@@ -71,7 +72,7 @@ train['resume_optimizer'] = False
 
 global net
 net = {}
-net['name'] = 'resnet_v1.resnet34'
+net['name'] = 'gluoncv_resnet_v15.resnet34'
 net['input_shape'] = (512,512)
 net['pretrained'] = False
 
@@ -97,7 +98,7 @@ loss['class_weight_dampening'] = 'log'
 
 
 test = {}
-test['model'] = '../save/gluoncv_resnet_v13.resnet34_shape512,512_seed0_Adam/20181228_014126/models/best_macro_f1_score.pth'
+test['model'] = '../save/gluoncv_resnet_v15.resnet34_shape512,512_seed1_Adam/20190104_091713/models/last.pth'
 test['batch_size'] = 8
 test['tta'] = 20
 
@@ -129,6 +130,7 @@ def parse_config():
     if 'v6' in net_name or 'v7' in net_name or 'v10' in net_name:
         net['se_kwargs'] = {}
         net['se_kwargs']['pool_fn'] = partial( nn.AdaptiveAvgPool2d , output_size = (1,1) )
+        net['se_kwargs']['reduction_ratio'] = 24
     
 
     train['sub_dir'] = '{}_shape{},{}_seed{}_{}'.format( net['name'] , net['input_shape'][0],net['input_shape'][1]  , train['random_seed'], train['optimizer'] )

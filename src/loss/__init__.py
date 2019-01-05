@@ -14,7 +14,7 @@ class Loss_v8( nn.Module ):
         super(type(self),self).__init__()
         self.config = config
         self.bce = nn.BCEWithLogitsLoss(weight)
-        self.f1_loss = F1Loss()
+        self.f1_loss = F1Loss(weight)
 
     def forward( self , results , batch , epoch ):
         config = self.config
@@ -77,9 +77,9 @@ class Loss_v6( nn.Module ):
     def __init__( self  , weight = None , config = None ):
         super(type(self),self).__init__()
         self.config = config
-        self.focal_loss = FocalLoss()
-        self.f1_loss = F1Loss()
-        self.mse = nn.MSELoss()
+        self.focal_loss = FocalLoss(weight)
+        self.f1_loss = F1Loss(weight)
+        self.mse = nn.MSELoss(weight)
 
     def forward( self , results , batch , epoch ):
         loss_dict = {}

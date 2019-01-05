@@ -98,7 +98,11 @@ class ProteinDataset(data.Dataset):
                 #except Exception as e:
                 #    print( fname )
                 #    raise e
-            img = img.reshape( img.shape[0] , img.shape[1] , 1  )
+            try:
+                img = img.reshape( img.shape[0] , img.shape[1] , 1  )
+            except Exception as e:
+                print( fname )
+                raise e
             img_channel_list.append( img )
 
         img =  np.concatenate( img_channel_list , axis = -1 )

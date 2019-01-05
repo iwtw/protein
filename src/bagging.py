@@ -13,7 +13,7 @@ def parse_args():
     parser.add_argument('-model_name',type=str,choices=['gcn','tede'],default='tede')
     parser.add_argument('-num_models',type=int,default=10)
     time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    model_info = '../data/bagging_results/' + time + '.txt'
+    model_info = '../submit/bagging_results/' + time + '.txt'
     parser.add_argument('-output_list',default = model_info )
     parser.add_argument('--start',type=int,default=0)
     return parser.parse_args()
@@ -30,23 +30,27 @@ if __name__ == "__main__":
         config.train['optimizer'] = 'Adam'
         config.train['MIL'] = False
         config.train['save_metric'] = {'macro_f1_score':True , 'bce':False , 'acc':True }#True : saves the max , False : saves the min
-        config.net['pretrained'] = False
         config.train['batch_size'] = 32
-        config.train['val_batch_size'] = 32
+        config.train['val_batch_size'] = 64
         config.train['freeze_feature_layer_epochs'] = 0
         config.train['lr_for_parts'] = [1,1,1]
         config.train['lr_curve'] = 'one_cycle'
-        config.train['lr_find'] = True
+        config.train['lr_find'] = False
+        config.train['lr_bounds'] = [0,75]
         config.loss['name'] = 'Loss_v8'
         config.loss['stage_epoch'] = [0,1000]
         config.data['train_dir'] = ''
         config.data['train_csv_file'] = '../data/train_mix1.csv'
         config.data['image_format'] = 'jpg'
 
+        config.net['name'] = 'gluoncv_resnet_v13.resnet34'
+        config.net['pretrained'] = False
         config.net['input_shape'] = (512,512)
         config.net['fm_mult'] = 1.0
-        config.loss['class_weight'] = True
+        config.loss['class_weight_dampening'] = 'log'
 
+
+        config.parse_config()
         results = main(config)
         
         log.append( str(results) )
@@ -54,7 +58,7 @@ if __name__ == "__main__":
             write_msg = '\n'.join( [ " ".join(v) for v in log ] ) 
             fp.write(write_msg+'\n')
             fp.flush()
-    print( log )
+        print( log )
 
 
 
